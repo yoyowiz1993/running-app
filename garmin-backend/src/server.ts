@@ -6,10 +6,14 @@ dotenv.config()
 
 const app = express()
 
+// CORS: allow frontend from any origin (no credentials sent, so * is valid)
+const allowedOrigin = process.env.ALLOWED_ORIGIN || '*'
 app.use(
   cors({
-    origin: process.env.ALLOWED_ORIGIN || '*',
-    credentials: true,
+    origin: allowedOrigin,
+    credentials: false,
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   }),
 )
 app.use(express.json())

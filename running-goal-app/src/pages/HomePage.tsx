@@ -184,7 +184,9 @@ export function HomePage() {
                     <button
                       type="button"
                       onClick={() => {
-                        window.location.href = getGarminAuthUrl()
+                        getGarminAuthUrl().then((url) => {
+                          window.location.href = url
+                        })
                       }}
                       className="inline-flex items-center gap-1 text-xs text-emerald-200 underline decoration-emerald-500/60 underline-offset-2"
                     >

@@ -5,7 +5,7 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { clearAllData } from '../lib/storage'
-import { getGarminAuthUrl } from '../lib/garmin'
+import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
 
 export function SettingsPage() {
   const nav = useNavigate()
@@ -13,11 +13,15 @@ export function SettingsPage() {
   const [garminStatus, setGarminStatus] = useState<'unknown' | 'connected' | 'disconnected'>(
     'unknown',
   )
+  const [backendUrl, setBackendUrl] = useState<string>('')
 
   useEffect(() => {
-    // For now we just read a flag from localStorage; later this can query the backend.
     const flag = localStorage.getItem('runningPlan.garmin.connected')
     setGarminStatus(flag === 'true' ? 'connected' : 'disconnected')
+  }, [])
+
+  useEffect(() => {
+    getApiBase().then(setBackendUrl)
   }, [])
 
   function clear(): void {
@@ -71,12 +75,25 @@ export function SettingsPage() {
             <Button
               variant="secondary"
               onClick={() => {
-                window.location.href = getGarminAuthUrl()
+                getGarminAuthUrl().then((url) => {
+                  window.location.href = url
+                })
               }}
             >
               <Link2 className="h-4 w-4" /> Connect Garmin
             </Button>
           </div>
+          {backendUrl ? (
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/60">
+              Backend: <span className="font-mono text-white/80">{backendUrl}</span>
+              {backendUrl.startsWith('http://localhost') ? (
+                <div className="mt-1 text-amber-200/90">
+                  Set VITE_API_BASE_URL on Netlify to your Render URL, or add apiBaseUrl in
+                  public/config.json, then redeploy.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </Card>
       </div>
     </div>
