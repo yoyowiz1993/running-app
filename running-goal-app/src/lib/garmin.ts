@@ -13,7 +13,8 @@ export type GarminActivity = {
 export async function fetchGarminActivities(): Promise<GarminActivity[]> {
   try {
     const res = await fetch(`${API_BASE}/api/activities`, {
-      credentials: 'include',
+      credentials: 'omit',
+      mode: 'cors',
     })
     if (!res.ok) return []
     const data = (await res.json()) as { activities?: GarminActivity[] }
