@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs and cache
+logs
+*.log
+.npm
+.eslintcache
+
+# OS and editors
+.DS_Store
+.idea
+.vscode/
