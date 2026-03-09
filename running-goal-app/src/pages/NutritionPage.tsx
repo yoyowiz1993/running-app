@@ -16,6 +16,8 @@ import { supabase } from '../lib/supabase'
 
 const FALLBACK_UNITS_IN_GRAMS: Record<string, number> = {
   g: 1,
+  gram: 1,
+  grams: 1,
   oz: 28.3495,
   lb: 453.592,
   cup: 240,
@@ -24,33 +26,40 @@ const FALLBACK_UNITS_IN_GRAMS: Record<string, number> = {
   ml: 1,
 }
 
-function getReferenceGrams(food: NutritionFood): number | null {
-  const p = food.portions.find((portion) => portion.gramWeight && portion.amount > 0)
-  if (!p?.gramWeight || p.amount <= 0) return null
-  return p.gramWeight / p.amount
+function normalizeUnit(unit: string): string {
+  const key = unit.trim().toLowerCase()
+  if (key === 'gram' || key === 'grams') return 'g'
+  return key
 }
 
 function getUnitGrams(food: NutritionFood, unit: string): number | null {
-  const portion = food.portions.find((p) => p.unit.toLowerCase() === unit.toLowerCase() && p.gramWeight && p.amount > 0)
+  const normalizedUnit = normalizeUnit(unit)
+  const portion = food.portions.find(
+    (p) => normalizeUnit(p.unit) === normalizedUnit && p.gramWeight && p.amount > 0,
+  )
   if (portion?.gramWeight && portion.amount > 0) {
     return portion.gramWeight / portion.amount
   }
-  const fallback = FALLBACK_UNITS_IN_GRAMS[unit.toLowerCase()]
+  const fallback = FALLBACK_UNITS_IN_GRAMS[normalizedUnit]
   return typeof fallback === 'number' ? fallback : null
 }
 
 function getMultiplier(food: NutritionFood, amount: number, unit: string): number {
   const safeAmount = amount > 0 ? amount : 1
-  // USDA nutrients are commonly expressed per 100g when portion weights are missing.
-  // Use 100g fallback so gram-based units still work predictably.
-  const referenceGrams = getReferenceGrams(food) ?? 100
+  const normalizedUnit = normalizeUnit(unit)
   const unitGrams = getUnitGrams(food, unit)
 
-  if (unitGrams) {
-    return (safeAmount * unitGrams) / referenceGrams
+  // For gram-like units, anchor to USDA's common per-100g nutrient basis.
+  if (normalizedUnit === 'g' || normalizedUnit === 'oz' || normalizedUnit === 'lb' || normalizedUnit === 'cup' ||
+      normalizedUnit === 'tbsp' || normalizedUnit === 'tsp' || normalizedUnit === 'ml') {
+    if (unitGrams) return (safeAmount * unitGrams) / 100
   }
 
-  const matchingPortion = food.portions.find((p) => p.unit.toLowerCase() === unit.toLowerCase() && p.amount > 0)
+  if (unitGrams) {
+    return (safeAmount * unitGrams) / 100
+  }
+
+  const matchingPortion = food.portions.find((p) => normalizeUnit(p.unit) === normalizedUnit && p.amount > 0)
   if (matchingPortion) {
     return safeAmount / matchingPortion.amount
   }
@@ -60,7 +69,7 @@ function getMultiplier(food: NutritionFood, amount: number, unit: string): numbe
 
 function getUnitOptions(food: NutritionFood): string[] {
   const fromApi = food.portions
-    .map((p) => p.unit.trim())
+    .map((p) => normalizeUnit(p.unit))
     .filter((u) => u.length > 0)
   const merged = ['g', ...fromApi, ...Object.keys(FALLBACK_UNITS_IN_GRAMS), 'serving']
   return Array.from(new Set(merged))
