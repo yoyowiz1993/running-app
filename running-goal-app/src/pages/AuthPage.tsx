@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Input, Label } from '../components/Field'
-import { signIn, signUp } from '../lib/auth'
+import { signIn, signInWithGoogle, signUp } from '../lib/auth'
 
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -27,6 +27,15 @@ export function AuthPage() {
     if (mode === 'signup') {
       setNotice('Check your email for confirmation if required, then sign in.')
     }
+  }
+
+  async function submitGoogle(): Promise<void> {
+    setError(null)
+    setNotice(null)
+    setLoading(true)
+    const msg = await signInWithGoogle()
+    setLoading(false)
+    if (msg) setError(msg)
   }
 
   return (
@@ -100,6 +109,11 @@ export function AuthPage() {
           <div className="mt-3">
             <Button className="w-full" onClick={() => void submit()} disabled={loading || !email || !password}>
               {loading ? 'Please wait...' : mode === 'signin' ? 'Continue' : 'Create account'}
+            </Button>
+          </div>
+          <div className="mt-2">
+            <Button variant="secondary" className="w-full" onClick={() => void submitGoogle()} disabled={loading}>
+              Sign in with Google
             </Button>
           </div>
         </Card>

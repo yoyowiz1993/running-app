@@ -14,6 +14,56 @@ import {
 } from '../lib/nutrition'
 import { supabase } from '../lib/supabase'
 
+const FALLBACK_UNITS_IN_GRAMS: Record<string, number> = {
+  g: 1,
+  oz: 28.3495,
+  lb: 453.592,
+  cup: 240,
+  tbsp: 15,
+  tsp: 5,
+  ml: 1,
+}
+
+function getReferenceGrams(food: NutritionFood): number | null {
+  const p = food.portions.find((portion) => portion.gramWeight && portion.amount > 0)
+  if (!p?.gramWeight || p.amount <= 0) return null
+  return p.gramWeight / p.amount
+}
+
+function getUnitGrams(food: NutritionFood, unit: string): number | null {
+  const portion = food.portions.find((p) => p.unit.toLowerCase() === unit.toLowerCase() && p.gramWeight && p.amount > 0)
+  if (portion?.gramWeight && portion.amount > 0) {
+    return portion.gramWeight / portion.amount
+  }
+  const fallback = FALLBACK_UNITS_IN_GRAMS[unit.toLowerCase()]
+  return typeof fallback === 'number' ? fallback : null
+}
+
+function getMultiplier(food: NutritionFood, amount: number, unit: string): number {
+  const safeAmount = amount > 0 ? amount : 1
+  const referenceGrams = getReferenceGrams(food)
+  const unitGrams = getUnitGrams(food, unit)
+
+  if (referenceGrams && unitGrams) {
+    return (safeAmount * unitGrams) / referenceGrams
+  }
+
+  const matchingPortion = food.portions.find((p) => p.unit.toLowerCase() === unit.toLowerCase() && p.amount > 0)
+  if (matchingPortion) {
+    return safeAmount / matchingPortion.amount
+  }
+
+  return safeAmount
+}
+
+function getUnitOptions(food: NutritionFood): string[] {
+  const fromApi = food.portions
+    .map((p) => p.unit.trim())
+    .filter((u) => u.length > 0)
+  const merged = [...fromApi, ...Object.keys(FALLBACK_UNITS_IN_GRAMS), 'serving']
+  return Array.from(new Set(merged))
+}
+
 export function NutritionPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -68,10 +118,11 @@ export function NutritionPage() {
     if (!userId || !selectedFood) return
     setError(null)
     setAdding(true)
-    const calories = Math.round(selectedFood.calories * addAmount)
-    const protein = selectedFood.protein ? Math.round(selectedFood.protein * addAmount) : null
-    const carbs = selectedFood.carbs ? Math.round(selectedFood.carbs * addAmount) : null
-    const fat = selectedFood.fat ? Math.round(selectedFood.fat * addAmount) : null
+    const multiplier = getMultiplier(selectedFood, addAmount, addUnit)
+    const calories = Math.round(selectedFood.calories * multiplier)
+    const protein = selectedFood.protein ? Math.round(selectedFood.protein * multiplier) : null
+    const carbs = selectedFood.carbs ? Math.round(selectedFood.carbs * multiplier) : null
+    const fat = selectedFood.fat ? Math.round(selectedFood.fat * multiplier) : null
     const { error: err } = await addLogEntry({
       userId,
       logDate: new Date().toISOString().slice(0, 10),
@@ -104,6 +155,7 @@ export function NutritionPage() {
   const totalProtein = todayLog.reduce((sum, e) => sum + (e.protein ?? 0), 0)
   const totalCarbs = todayLog.reduce((sum, e) => sum + (e.carbs ?? 0), 0)
   const totalFat = todayLog.reduce((sum, e) => sum + (e.fat ?? 0), 0)
+  const selectedMultiplier = selectedFood ? getMultiplier(selectedFood, addAmount, addUnit) : 1
 
   return (
     <div className="min-h-full bg-gradient-to-b from-[#070b14] via-[#070b14] to-[#041a14]">
@@ -135,7 +187,7 @@ export function NutritionPage() {
                     onClick={() => {
                       setSelectedFood(f)
                       const first = f.portions[0]
-                      setAddUnit(first?.unit ?? 'serving')
+                      setAddUnit(first?.unit ?? 'g')
                       setAddAmount(first?.amount ?? 1)
                     }}
                     className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-white hover:bg-white/10"
@@ -174,23 +226,20 @@ export function NutritionPage() {
                     onChange={(e) => setAddUnit(e.target.value)}
                     className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:border-emerald-400/50"
                   >
-                    {selectedFood.portions.map((p, i) => (
-                      <option key={i} value={p.unit}>
-                        {p.amount} {p.unit}
+                    {getUnitOptions(selectedFood).map((unit) => (
+                      <option key={unit} value={unit}>
+                        {unit}
                       </option>
                     ))}
-                    {selectedFood.portions.length === 0 && (
-                      <option value="serving">serving</option>
-                    )}
                   </select>
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <div className="text-sm text-white/70">
-                  <div>≈ {Math.round(selectedFood.calories * addAmount)} cal</div>
+                  <div>≈ {Math.round(selectedFood.calories * selectedMultiplier)} cal</div>
                   <div className="text-xs text-white/50">
-                    P {Math.round(selectedFood.protein * addAmount)}g · C {Math.round(selectedFood.carbs * addAmount)}g · F{' '}
-                    {Math.round(selectedFood.fat * addAmount)}g
+                    P {Math.round(selectedFood.protein * selectedMultiplier)}g · C {Math.round(selectedFood.carbs * selectedMultiplier)}g
+                    {' · '}F {Math.round(selectedFood.fat * selectedMultiplier)}g
                   </div>
                 </div>
                 <div className="flex gap-2">

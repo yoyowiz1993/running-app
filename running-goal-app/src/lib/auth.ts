@@ -29,6 +29,16 @@ export async function signUp(email: string, password: string): Promise<string | 
   return error?.message ?? null
 }
 
+export async function signInWithGoogle(): Promise<string | null> {
+  if (!supabase) return 'Supabase is not configured.'
+  const redirectTo = `${window.location.origin}/`
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  })
+  return error?.message ?? null
+}
+
 export async function signOut(): Promise<void> {
   if (!supabase) return
   await supabase.auth.signOut()

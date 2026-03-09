@@ -85,6 +85,13 @@ create policy "users_delete_own_nutrition"
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_API_BASE_URL` (your Garmin backend URL; optional if `public/config.json` has `apiBaseUrl`)
+5. Optional: enable Google login in Supabase:
+   - Supabase dashboard -> Authentication -> Providers -> Google -> Enable
+   - Add your Google OAuth client ID/secret (from Google Cloud Console)
+   - In Supabase URL Configuration, add your redirect URLs:
+     - Local: `http://localhost:5173/`
+     - Netlify: `https://YOUR-NETLIFY-SITE.netlify.app/`
+   - Save provider settings
 
 **Next steps so the app works with Supabase (locally and on deploy):**
 
