@@ -47,12 +47,18 @@ export function NutritionPage() {
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setSearchResults([])
+      setError(null)
       return
     }
     const t = window.setTimeout(() => {
       setSearching(true)
+      setError(null)
       searchFoods(searchQuery)
         .then((foods) => setSearchResults(foods))
+        .catch((err: unknown) => {
+          setSearchResults([])
+          setError(err instanceof Error ? err.message : 'Failed to search foods')
+        })
         .finally(() => setSearching(false))
     }, 300)
     return () => window.clearTimeout(t)
@@ -114,6 +120,9 @@ export function NutritionPage() {
             </span>
           </div>
           {searching && <div className="mt-2 text-sm text-white/60">Searching...</div>}
+          {!searching && searchQuery.trim().length >= 2 && !error && searchResults.length === 0 && (
+            <div className="mt-2 text-sm text-white/60">No foods found for that search.</div>
+          )}
           {searchResults.length > 0 && !selectedFood && (
             <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
               {searchResults.map((f) => (

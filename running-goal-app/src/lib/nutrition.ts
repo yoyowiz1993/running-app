@@ -34,11 +34,17 @@ export async function searchFoods(query: string): Promise<NutritionFood[]> {
       `${base}/api/nutrition/search?q=${encodeURIComponent(query.trim())}`,
       { credentials: 'omit', mode: 'cors' },
     )
-    if (!res.ok) return []
-    const data = (await res.json()) as { foods?: NutritionFood[] }
+    const data = (await res.json()) as { foods?: NutritionFood[]; error?: string }
+    if (!res.ok) {
+      throw new Error(data.error || `Nutrition search failed (${res.status})`)
+    }
+    if (data.error) {
+      throw new Error(data.error)
+    }
     return data.foods ?? []
-  } catch {
-    return []
+  } catch (err) {
+    if (err instanceof Error) throw err
+    throw new Error('Nutrition search failed')
   }
 }
 
