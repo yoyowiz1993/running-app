@@ -3,6 +3,8 @@ import { supabase } from './supabase'
 
 const KEY_GOAL = 'runningPlan.goal.v1'
 const KEY_PLAN = 'runningPlan.plan.v1'
+const KEY_PLANS = 'runningPlan.plans.v2'
+const KEY_ACTIVE_PLAN_ID = 'runningPlan.activePlanId.v2'
 let currentUserId: string | null = null
 let syncTimer: number | null = null
 
@@ -15,6 +17,23 @@ function safeParseJson<T>(raw: string | null): T | null {
   }
 }
 
+function migrateLegacyPlanIfNeeded(): void {
+  const legacy = localStorage.getItem(KEY_PLAN)
+  const plans = localStorage.getItem(KEY_PLANS)
+  if (!legacy || plans) return
+
+  const parsed = safeParseJson<TrainingPlan>(legacy)
+  if (!parsed) {
+    localStorage.removeItem(KEY_PLAN)
+    return
+  }
+
+  const migrated = { ...parsed, planName: parsed.planName ?? `Plan ${parsed.raceDateISO}`, endDateISO: parsed.endDateISO ?? parsed.raceDateISO }
+  localStorage.setItem(KEY_PLANS, JSON.stringify([migrated]))
+  localStorage.setItem(KEY_ACTIVE_PLAN_ID, migrated.id)
+  localStorage.removeItem(KEY_PLAN)
+}
+
 export function loadGoal(): RunningGoal | null {
   return safeParseJson<RunningGoal>(localStorage.getItem(KEY_GOAL))
 }
@@ -24,18 +43,66 @@ export function saveGoal(goal: RunningGoal): void {
   scheduleCloudSync()
 }
 
+export function loadPlans(): TrainingPlan[] {
+  migrateLegacyPlanIfNeeded()
+  const raw = localStorage.getItem(KEY_PLANS)
+  if (!raw) return []
+  const arr = safeParseJson<TrainingPlan[]>(raw)
+  return Array.isArray(arr) ? arr : []
+}
+
+export function savePlans(plans: TrainingPlan[]): void {
+  localStorage.setItem(KEY_PLANS, JSON.stringify(plans))
+  scheduleCloudSync()
+}
+
+export function loadActivePlanId(): string | null {
+  migrateLegacyPlanIfNeeded()
+  return localStorage.getItem(KEY_ACTIVE_PLAN_ID)
+}
+
+export function setActivePlanId(id: string | null): void {
+  if (id) localStorage.setItem(KEY_ACTIVE_PLAN_ID, id)
+  else localStorage.removeItem(KEY_ACTIVE_PLAN_ID)
+  scheduleCloudSync()
+}
+
+export function loadActivePlan(): TrainingPlan | null {
+  const plans = loadPlans()
+  const activeId = loadActivePlanId()
+  if (!activeId) return plans[0] ?? null
+  const found = plans.find((p) => p.id === activeId)
+  return found ?? plans[0] ?? null
+}
+
 export function loadPlan(): TrainingPlan | null {
-  return safeParseJson<TrainingPlan>(localStorage.getItem(KEY_PLAN))
+  return loadActivePlan()
 }
 
 export function savePlan(plan: TrainingPlan): void {
-  localStorage.setItem(KEY_PLAN, JSON.stringify(plan))
-  scheduleCloudSync()
+  const plans = loadPlans()
+  const idx = plans.findIndex((p) => p.id === plan.id)
+  const next = idx >= 0 ? plans.map((p, i) => (i === idx ? plan : p)) : [...plans, plan]
+  savePlans(next)
+  setActivePlanId(plan.id)
+}
+
+export function deletePlan(planId: string): void {
+  const plans = loadPlans().filter((p) => p.id !== planId)
+  const activeId = loadActivePlanId()
+  savePlans(plans)
+  if (activeId === planId) {
+    setActivePlanId(plans[0]?.id ?? null)
+  } else {
+    setActivePlanId(activeId)
+  }
 }
 
 export function clearAllData(): void {
   localStorage.removeItem(KEY_GOAL)
   localStorage.removeItem(KEY_PLAN)
+  localStorage.removeItem(KEY_PLANS)
+  localStorage.removeItem(KEY_ACTIVE_PLAN_ID)
   scheduleCloudSync()
 }
 
@@ -70,16 +137,21 @@ function scheduleCloudSync(): void {
 async function pushLocalStateToCloud(): Promise<void> {
   if (!currentUserId || !supabase) return
   const goal = loadGoal()
-  const plan = loadPlan()
-  const { error } = await supabase.from('user_state').upsert(
-    {
-      user_id: currentUserId,
-      goal,
-      plan,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: 'user_id' },
-  )
+  const plans = loadPlans()
+  const activePlanId = loadActivePlanId()
+  const plan = loadActivePlan()
+
+  const payload: Record<string, unknown> = {
+    user_id: currentUserId,
+    goal,
+    plan,
+    updated_at: new Date().toISOString(),
+  }
+  if (plans.length > 0) payload.plans = plans
+  if (activePlanId) payload.active_plan_id = activePlanId
+
+  const { error } = await supabase.from('user_state').upsert(payload as Record<string, unknown>, { onConflict: 'user_id' })
+
   if (error) {
     console.warn('Cloud sync failed:', error.message)
   }
@@ -90,7 +162,7 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   currentUserId = userId
   const { data, error } = await supabase
     .from('user_state')
-    .select('goal,plan')
+    .select('*')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -100,9 +172,9 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   }
 
   const localGoal = loadGoal()
-  const localPlan = loadPlan()
+  const localPlans = loadPlans()
+  const localActiveId = loadActivePlanId()
 
-  // If no cloud row yet, seed cloud from local.
   if (!data) {
     await pushLocalStateToCloud()
     return
@@ -111,10 +183,25 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (data.goal) localStorage.setItem(KEY_GOAL, JSON.stringify(data.goal))
   else if (!localGoal) localStorage.removeItem(KEY_GOAL)
 
-  if (data.plan) localStorage.setItem(KEY_PLAN, JSON.stringify(data.plan))
-  else if (!localPlan) localStorage.removeItem(KEY_PLAN)
+  const cloudPlans = Array.isArray(data.plans) ? (data.plans as TrainingPlan[]) : null
+  const cloudActiveId = typeof data.active_plan_id === 'string' ? data.active_plan_id : null
 
-  // Keep cloud fresh in case local had newer changes not represented yet.
+  if (cloudPlans && cloudPlans.length > 0) {
+    localStorage.setItem(KEY_PLANS, JSON.stringify(cloudPlans))
+    if (cloudActiveId) localStorage.setItem(KEY_ACTIVE_PLAN_ID, cloudActiveId)
+    else if (cloudPlans[0]) localStorage.setItem(KEY_ACTIVE_PLAN_ID, cloudPlans[0].id)
+    localStorage.removeItem(KEY_PLAN)
+  } else if (data.plan && typeof data.plan === 'object') {
+    const legacy = data.plan as TrainingPlan
+    const migrated = { ...legacy, planName: legacy.planName ?? `Plan ${legacy.raceDateISO}`, endDateISO: legacy.endDateISO ?? legacy.raceDateISO }
+    localStorage.setItem(KEY_PLANS, JSON.stringify([migrated]))
+    localStorage.setItem(KEY_ACTIVE_PLAN_ID, migrated.id)
+    localStorage.removeItem(KEY_PLAN)
+  } else if (!localPlans.length && !localActiveId) {
+    localStorage.removeItem(KEY_PLANS)
+    localStorage.removeItem(KEY_ACTIVE_PLAN_ID)
+    localStorage.removeItem(KEY_PLAN)
+  }
+
   await pushLocalStateToCloud()
 }
-

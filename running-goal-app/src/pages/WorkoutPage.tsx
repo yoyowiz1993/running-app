@@ -6,7 +6,7 @@ import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
-import { formatPace } from '../lib/pace'
+import { formatPaceWithSpeed } from '../lib/pace'
 import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { formatClock, formatDurationShort } from '../lib/time'
 import { useWorkoutPlayer } from '../lib/useWorkoutPlayer'
@@ -102,7 +102,7 @@ export function WorkoutPage() {
                   Garmin: {workout.garminDistanceKm.toFixed(2)}km •{' '}
                   {formatClock(workout.garminDurationSec ?? 0)} •{' '}
                   {workout.garminAvgPaceSecPerKm
-                    ? formatPace(workout.garminAvgPaceSecPerKm)
+                    ? formatPaceWithSpeed(workout.garminAvgPaceSecPerKm)
                     : null}
                 </div>
               ) : null}
@@ -138,7 +138,7 @@ export function WorkoutPage() {
             </div>
             <div className="mt-3 flex items-center justify-center gap-2 text-sm text-white/60">
               {player.currentStage?.targetPaceSecPerKm ? (
-                <span>Target {formatPace(player.currentStage.targetPaceSecPerKm)}</span>
+                <span>Target {formatPaceWithSpeed(player.currentStage.targetPaceSecPerKm)}</span>
               ) : (
                 <span>Follow the prompt</span>
               )}
@@ -212,7 +212,7 @@ export function WorkoutPage() {
                       <div className={active ? 'text-white' : 'text-white/90'}>{s.label}</div>
                       <div className="mt-0.5 text-xs text-white/60">
                         {formatDurationShort(s.durationSec)}
-                        {s.targetPaceSecPerKm ? ` • ${formatPace(s.targetPaceSecPerKm)}` : ''}
+                        {s.targetPaceSecPerKm ? ` • ${formatPaceWithSpeed(s.targetPaceSecPerKm)}` : ''}
                       </div>
                     </div>
                     <div className="text-xs text-white/50">#{idx + 1}</div>

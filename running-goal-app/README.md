@@ -81,11 +81,21 @@ create policy "users_delete_own_nutrition"
   on public.nutrition_log for delete using (auth.uid() = user_id);
 ```
 
-4. In frontend env vars (see below), set:
+4. **Multi-plan support** (optional). Run in Supabase SQL editor to enable multiple plans per user:
+
+```sql
+alter table public.user_state
+  add column if not exists plans jsonb,
+  add column if not exists active_plan_id text;
+```
+
+Or run `supabase-multi-plan.sql` from this repo.
+
+5. In frontend env vars (see below), set:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_API_BASE_URL` (your Garmin backend URL; optional if `public/config.json` has `apiBaseUrl`)
-5. Optional: enable Google login in Supabase:
+6. Optional: enable Google login in Supabase:
    - Supabase dashboard -> Authentication -> Providers -> Google -> Enable
    - Add your Google OAuth client ID/secret (from Google Cloud Console)
    - In Supabase URL Configuration, add your redirect URLs:

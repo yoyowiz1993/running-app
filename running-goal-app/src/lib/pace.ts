@@ -22,6 +22,17 @@ export function formatPace(secPerKm: number): string {
   return `${m}:${String(r).padStart(2, '0')}/km`
 }
 
+export function secPerKmToKmh(secPerKm: number): number {
+  if (secPerKm <= 0) return 0
+  return 3600 / secPerKm
+}
+
+export function formatPaceWithSpeed(secPerKm: number): string {
+  const pace = formatPace(secPerKm)
+  const kmh = secPerKmToKmh(secPerKm)
+  return `${pace} (${kmh.toFixed(1)} km/h)`
+}
+
 export function clampPace(secPerKm: number): number {
   return Math.min(Math.max(secPerKm, 120), 720)
 }

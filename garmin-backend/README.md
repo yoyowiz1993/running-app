@@ -29,5 +29,6 @@ OAuth 2.0 PKCE flow for Garmin Connect and placeholder API for activities.
 - **GET /auth/garmin/callback** – Exchanges the authorization code for tokens, then redirects the user to the frontend with `?garmin=connected` or `?garmin=error`.
 - **POST /api/garmin/workouts/sync** – Accepts planned workouts and returns sync results. In `GARMIN_PUSH_MODE=mock`, it returns mock synced IDs so frontend flows can be tested end-to-end.
 - **GET /api/nutrition/search?q=...** – Proxies to USDA FoodData Central; returns simplified food list (name, portions, calories, macros) for the frontend calorie log.
+- **POST /api/intervals/import** – Imports running plans from Intervals.icu. Body: `{ apiKey, oldest, newest, planName? }`. API key is provided by the user (from Intervals.icu Developer Settings); not stored server-side.
 
 Tokens are logged only; a later version can store them (e.g. in a DB) and use them to call Garmin APIs for activities.

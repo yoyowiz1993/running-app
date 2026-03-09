@@ -74,12 +74,22 @@ function weeklyVolumeKm(weekIdx: number, weeks: number, peakKm: number): number 
   return Math.max(12, roundTo(vol, 1))
 }
 
-export function generateTrainingPlan(goal: RunningGoal, today = new Date()): TrainingPlan {
-  const now = startOfDay(today)
-  const raceDate = parseISO(goal.raceDateISO)
-  const safeRaceDate = isValid(raceDate) && isAfter(raceDate, now) ? startOfDay(raceDate) : addDays(now, 56)
+export type GeneratePlanOptions = {
+  startDate?: Date
+  endDate?: Date
+  planName?: string
+  today?: Date
+}
 
-  const daysToRace = Math.max(14, differenceInCalendarDays(safeRaceDate, now))
+export function generateTrainingPlan(goal: RunningGoal, today = new Date(), options?: GeneratePlanOptions): TrainingPlan {
+  const planStart = options?.startDate ? startOfDay(options.startDate) : startOfDay(today)
+  const raceDate = parseISO(goal.raceDateISO)
+  const explicitEnd = options?.endDate ? startOfDay(options.endDate) : null
+  const safeRaceDate =
+    explicitEnd ??
+    (isValid(raceDate) && isAfter(raceDate, planStart) ? startOfDay(raceDate) : addDays(planStart, 56))
+
+  const daysToRace = Math.max(14, differenceInCalendarDays(safeRaceDate, planStart))
   const weeks = Math.max(4, Math.min(26, Math.ceil(daysToRace / 7)))
 
   const targetPace = clampPace(goal.targetPaceSecPerKm)
@@ -89,7 +99,7 @@ export function generateTrainingPlan(goal: RunningGoal, today = new Date()): Tra
   const intervalPace = clampPace(Math.max(120, targetPace - 25))
   const recoveryPace = clampPace(easyPace + 10)
 
-  const week0 = startOfWeek(now, { weekStartsOn: 1 })
+  const week0 = startOfWeek(planStart, { weekStartsOn: 1 })
   const peakWeeklyKm = computePeakWeeklyKm(goal.distanceKm)
 
   const workouts: Workout[] = []
@@ -226,20 +236,22 @@ export function generateTrainingPlan(goal: RunningGoal, today = new Date()): Tra
     )
   }
 
+  const planStartStr = formatISO(planStart, { representation: 'date' })
+  const planEndStr = formatISO(safeRaceDate, { representation: 'date' })
+
   const filtered = workouts
-    .filter((w) => {
-      const d = parseISO(w.dateISO)
-      return isValid(d) && !isAfter(now, d)
-    })
-    .filter((w) => w.dateISO <= formatISO(safeRaceDate, { representation: 'date' }))
+    .filter((w) => w.dateISO >= planStartStr && w.dateISO <= planEndStr)
     .sort((a, b) => a.dateISO.localeCompare(b.dateISO))
 
   return {
     version: 1,
     id: newId('plan'),
     generatedAtISO: new Date().toISOString(),
-    startDateISO: formatISO(now, { representation: 'date' }),
-    raceDateISO: formatISO(safeRaceDate, { representation: 'date' }),
+    startDateISO: planStartStr,
+    raceDateISO: planEndStr,
+    endDateISO: planEndStr,
+    planName: options?.planName,
+    source: 'local',
     goal,
     workouts: filtered,
   }

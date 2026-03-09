@@ -45,12 +45,17 @@ export type Workout = {
   garminLastSyncedAtISO?: string
 }
 
+export type PlanSource = 'local' | 'intervals_icu'
+
 export type TrainingPlan = {
   version: 1
   id: string
   generatedAtISO: string
   startDateISO: string
   raceDateISO: string
+  endDateISO?: string
+  planName?: string
+  source?: PlanSource
   goal: RunningGoal
   workouts: Workout[]
 }

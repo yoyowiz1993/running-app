@@ -7,8 +7,15 @@ import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
-import { formatPace } from '../lib/pace'
-import { loadPlan, savePlan, updateWorkout, updateWorkouts } from '../lib/storage'
+import { formatPaceWithSpeed } from '../lib/pace'
+import {
+  loadActivePlan,
+  loadPlans,
+  savePlan,
+  setActivePlanId,
+  updateWorkout,
+  updateWorkouts,
+} from '../lib/storage'
 import type { TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
 
@@ -47,9 +54,16 @@ function typeBadge(type: Workout['type']): string {
 
 export function CalendarPage() {
   const nav = useNavigate()
-  const [plan, setPlan] = useState<TrainingPlan | null>(() => loadPlan())
+  const [plan, setPlan] = useState<TrainingPlan | null>(() => loadActivePlan())
+  const [plans, setPlans] = useState<TrainingPlan[]>(() => loadPlans())
   const [syncingWorkoutId, setSyncingWorkoutId] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
+
+  function switchPlan(planId: string): void {
+    setActivePlanId(planId)
+    setPlan(loadActivePlan())
+    setPlans(loadPlans())
+  }
 
   const groups = useMemo(() => groupByDate(plan?.workouts ?? []), [plan?.workouts])
 
@@ -104,10 +118,27 @@ export function CalendarPage() {
           <>
             <Card className="p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-base font-semibold text-white">Race {plan.goal.distanceKm}km</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <div className="text-base font-semibold text-white">
+                      {plan.planName ?? `Race ${plan.goal.distanceKm}km`}
+                    </div>
+                    {plans.length > 1 ? (
+                      <select
+                        value={plan.id}
+                        onChange={(e) => switchPlan(e.target.value)}
+                        className="rounded-lg border border-white/20 bg-black/30 px-2 py-1 text-sm text-white outline-none focus:border-emerald-400/50"
+                      >
+                        {plans.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.planName ?? `Plan ${p.raceDateISO}`}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                  </div>
                   <div className="mt-1 text-sm text-white/70">
-                    Target pace {formatPace(plan.goal.targetPaceSecPerKm)} • race {plan.raceDateISO}
+                    Target pace {formatPaceWithSpeed(plan.goal.targetPaceSecPerKm)} • {plan.startDateISO} – {plan.raceDateISO}
                   </div>
                 </div>
                 <Button variant="secondary" onClick={() => void syncAll()} disabled={syncingAll}>
