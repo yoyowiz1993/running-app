@@ -101,6 +101,9 @@ export function NutritionPage() {
   }
 
   const totalCalories = todayLog.reduce((sum, e) => sum + (e.calories ?? 0), 0)
+  const totalProtein = todayLog.reduce((sum, e) => sum + (e.protein ?? 0), 0)
+  const totalCarbs = todayLog.reduce((sum, e) => sum + (e.carbs ?? 0), 0)
+  const totalFat = todayLog.reduce((sum, e) => sum + (e.fat ?? 0), 0)
 
   return (
     <div className="min-h-full bg-gradient-to-b from-[#070b14] via-[#070b14] to-[#041a14]">
@@ -142,6 +145,9 @@ export function NutritionPage() {
                       {f.calories} cal per serving
                       {f.portions.length > 0 ? ` · ${f.portions.length} portion(s)` : ''}
                     </div>
+                    <div className="mt-1 text-xs text-white/50">
+                      P {Math.round(f.protein)}g · C {Math.round(f.carbs)}g · F {Math.round(f.fat)}g
+                    </div>
                   </button>
                 </li>
               ))}
@@ -180,9 +186,13 @@ export function NutritionPage() {
                 </div>
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="text-sm text-white/70">
-                  ≈ {Math.round(selectedFood.calories * addAmount)} cal
-                </span>
+                <div className="text-sm text-white/70">
+                  <div>≈ {Math.round(selectedFood.calories * addAmount)} cal</div>
+                  <div className="text-xs text-white/50">
+                    P {Math.round(selectedFood.protein * addAmount)}g · C {Math.round(selectedFood.carbs * addAmount)}g · F{' '}
+                    {Math.round(selectedFood.fat * addAmount)}g
+                  </div>
+                </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" onClick={() => setSelectedFood(null)}>
                     Cancel
@@ -206,6 +216,9 @@ export function NutritionPage() {
             <div className="text-base font-semibold text-white">Today&apos;s log</div>
             <div className="text-lg font-semibold text-emerald-300">{totalCalories} cal</div>
           </div>
+          <div className="mt-2 text-xs text-white/60">
+            Protein: {Math.round(totalProtein)}g · Carbs: {Math.round(totalCarbs)}g · Fat: {Math.round(totalFat)}g
+          </div>
           {todayLog.length === 0 ? (
             <div className="mt-3 text-sm text-white/60">No entries yet. Search and add foods above.</div>
           ) : (
@@ -219,6 +232,9 @@ export function NutritionPage() {
                     <div className="text-sm font-medium text-white">{e.food_name}</div>
                     <div className="text-xs text-white/60">
                       {e.amount} {e.unit} · {e.calories} cal
+                    </div>
+                    <div className="text-xs text-white/50">
+                      P {Math.round(e.protein ?? 0)}g · C {Math.round(e.carbs ?? 0)}g · F {Math.round(e.fat ?? 0)}g
                     </div>
                   </div>
                   <button
