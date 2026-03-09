@@ -1,12 +1,14 @@
 import { format, isValid, parseISO } from 'date-fns'
-import { CheckCircle2, Clock, Play } from 'lucide-react'
+import { CheckCircle2, Clock, Play, UploadCloud } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
+import { pushWorkoutsToGarmin } from '../lib/garmin'
+import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { formatPace } from '../lib/pace'
-import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
+import { loadPlan, savePlan, updateWorkout, updateWorkouts } from '../lib/storage'
 import type { TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
 
@@ -46,6 +48,8 @@ function typeBadge(type: Workout['type']): string {
 export function CalendarPage() {
   const nav = useNavigate()
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadPlan())
+  const [syncingWorkoutId, setSyncingWorkoutId] = useState<string | null>(null)
+  const [syncingAll, setSyncingAll] = useState(false)
 
   const groups = useMemo(() => groupByDate(plan?.workouts ?? []), [plan?.workouts])
 
@@ -58,6 +62,30 @@ export function CalendarPage() {
     const nextPlan = updateWorkout(plan, updated)
     savePlan(nextPlan)
     setPlan(nextPlan)
+  }
+
+  async function syncOne(w: Workout): Promise<void> {
+    if (!plan || w.type === 'rest') return
+    setSyncingWorkoutId(w.id)
+    const results = await pushWorkoutsToGarmin([toGarminPushInput(w)])
+    const patched = applyPushResults([w], results)
+    const nextPlan = updateWorkouts(plan, patched)
+    savePlan(nextPlan)
+    setPlan(nextPlan)
+    setSyncingWorkoutId(null)
+  }
+
+  async function syncAll(): Promise<void> {
+    if (!plan) return
+    const targets = plan.workouts.filter((w) => w.type !== 'rest')
+    if (targets.length === 0) return
+    setSyncingAll(true)
+    const results = await pushWorkoutsToGarmin(targets.map(toGarminPushInput))
+    const patched = applyPushResults(targets, results)
+    const nextPlan = updateWorkouts(plan, patched)
+    savePlan(nextPlan)
+    setPlan(nextPlan)
+    setSyncingAll(false)
   }
 
   return (
@@ -75,9 +103,16 @@ export function CalendarPage() {
         ) : (
           <>
             <Card className="p-4">
-              <div className="text-base font-semibold text-white">Race {plan.goal.distanceKm}km</div>
-              <div className="mt-1 text-sm text-white/70">
-                Target pace {formatPace(plan.goal.targetPaceSecPerKm)} • race {plan.raceDateISO}
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-base font-semibold text-white">Race {plan.goal.distanceKm}km</div>
+                  <div className="mt-1 text-sm text-white/70">
+                    Target pace {formatPace(plan.goal.targetPaceSecPerKm)} • race {plan.raceDateISO}
+                  </div>
+                </div>
+                <Button variant="secondary" onClick={() => void syncAll()} disabled={syncingAll}>
+                  <UploadCloud className="h-4 w-4" /> {syncingAll ? 'Sending...' : 'Send All'}
+                </Button>
               </div>
             </Card>
 
@@ -102,6 +137,19 @@ export function CalendarPage() {
                                 <CheckCircle2 className="h-4 w-4" /> done
                               </span>
                             ) : null}
+                            {w.garminSyncStatus ? (
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
+                                  w.garminSyncStatus === 'synced'
+                                    ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
+                                    : w.garminSyncStatus === 'failed'
+                                      ? 'border-red-400/30 bg-red-500/10 text-red-200'
+                                      : 'border-amber-300/30 bg-amber-500/10 text-amber-100'
+                                }`}
+                              >
+                                Garmin {w.garminSyncStatus}
+                              </span>
+                            ) : null}
                           </div>
                           <div className="mt-1 text-white">{w.title}</div>
                           <div className="mt-1 inline-flex items-center gap-2 text-xs text-white/60">
@@ -121,6 +169,15 @@ export function CalendarPage() {
                           <Button variant="ghost" onClick={() => toggleComplete(w)}>
                             {w.completedAtISO ? 'Undo' : 'Mark done'}
                           </Button>
+                          {w.type !== 'rest' ? (
+                            <Button
+                              variant="ghost"
+                              onClick={() => void syncOne(w)}
+                              disabled={syncingWorkoutId === w.id || syncingAll}
+                            >
+                              {syncingWorkoutId === w.id ? 'Sending...' : 'Send to Garmin'}
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     </Card>

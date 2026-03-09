@@ -31,6 +31,28 @@ export type GarminActivity = {
   source?: string
 }
 
+export type GarminPushWorkoutInput = {
+  workoutId: string
+  dateISO: string
+  title: string
+  type: string
+  plannedDistanceKm?: number
+  totalDurationSec: number
+  stages: Array<{
+    label: string
+    kind: string
+    durationSec: number
+    targetPaceSecPerKm?: number
+  }>
+}
+
+export type GarminPushResult = {
+  workoutId: string
+  status: 'queued' | 'synced' | 'failed'
+  externalId?: string
+  message?: string
+}
+
 export async function fetchGarminActivities(): Promise<GarminActivity[]> {
   try {
     const base = await getApiBase()
@@ -49,5 +71,38 @@ export async function fetchGarminActivities(): Promise<GarminActivity[]> {
 export async function getGarminAuthUrl(): Promise<string> {
   const base = await getApiBase()
   return `${base}/auth/garmin/start`
+}
+
+export async function pushWorkoutsToGarmin(
+  workouts: GarminPushWorkoutInput[],
+): Promise<GarminPushResult[]> {
+  if (workouts.length === 0) return []
+  try {
+    const base = await getApiBase()
+    const res = await fetch(`${base}/api/garmin/workouts/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workouts }),
+      credentials: 'omit',
+      mode: 'cors',
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      return workouts.map((w) => ({
+        workoutId: w.workoutId,
+        status: 'failed',
+        message: `Backend error: ${res.status} ${text.slice(0, 80)}`,
+      }))
+    }
+    const data = (await res.json()) as { results?: GarminPushResult[] }
+    return data.results ?? []
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Network error'
+    return workouts.map((w) => ({
+      workoutId: w.workoutId,
+      status: 'failed',
+      message,
+    }))
+  }
 }
 

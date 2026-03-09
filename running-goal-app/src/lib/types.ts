@@ -39,6 +39,10 @@ export type Workout = {
   garminDistanceKm?: number
   garminDurationSec?: number
   garminAvgPaceSecPerKm?: number
+  garminSyncStatus?: 'queued' | 'synced' | 'failed'
+  garminWorkoutId?: string
+  garminSyncMessage?: string
+  garminLastSyncedAtISO?: string
 }
 
 export type TrainingPlan = {

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
+import { signOut } from '../lib/auth'
 import { clearAllData } from '../lib/storage'
 import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
 
@@ -18,6 +19,23 @@ export function SettingsPage() {
   useEffect(() => {
     const flag = localStorage.getItem('runningPlan.garmin.connected')
     setGarminStatus(flag === 'true' ? 'connected' : 'disconnected')
+  }, [])
+
+  // Handle redirect back from Garmin OAuth callback
+  useEffect(() => {
+    const hash = window.location.hash || ''
+    const q = hash.includes('?') ? hash.slice(hash.indexOf('?')) : window.location.search
+    const params = new URLSearchParams(q)
+    const garmin = params.get('garmin')
+    if (garmin === 'connected') {
+      localStorage.setItem('runningPlan.garmin.connected', 'true')
+      setGarminStatus('connected')
+      window.history.replaceState(null, '', window.location.pathname + '#/settings')
+    } else if (garmin === 'error') {
+      const message = params.get('message') || 'Unknown error'
+      console.warn('Garmin OAuth error:', message)
+      window.history.replaceState(null, '', window.location.pathname + '#/settings')
+    }
   }, [])
 
   useEffect(() => {
@@ -35,13 +53,24 @@ export function SettingsPage() {
       <TopBar title="Settings" />
       <div className="safe-area-px mx-auto w-full max-w-md px-4 pb-28 pt-5">
         <Card className="p-4">
-          <div className="text-base font-semibold text-white">Data</div>
+          <div className="text-base font-semibold text-white">Data & Account</div>
           <div className="mt-1 text-sm text-white/70">
-            Your goal + plan are stored on this device only (offline).
+            Your goal + plan are synced to your account (and also cached on this device).
           </div>
           <div className="mt-4">
             <Button variant="danger" className="w-full" onClick={clear}>
               <Trash2 className="h-4 w-4" /> Clear all data
+            </Button>
+          </div>
+          <div className="mt-2">
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={() => {
+                void signOut()
+              }}
+            >
+              Sign out
             </Button>
           </div>
           {cleared ? <div className="mt-3 text-sm text-emerald-200">Cleared.</div> : null}

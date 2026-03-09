@@ -7,7 +7,7 @@ Mobile-first web app that lets you:
 - Follow the plan in a **training calendar**
 - Tap **Start** on any workout to run it interactively with **stage timers** (warmup → main set → cooldown)
 
-Everything is stored **offline on your device** via `localStorage`.
+Data is cached locally and synced per user account via Supabase.
 
 ## Run locally
 
@@ -18,6 +18,83 @@ npm run dev -- --host
 ```
 
 Then open the printed LAN URL on your iPhone (same Wi‑Fi).
+
+## Supabase setup (required for login + per-user persistence)
+
+1. Create a Supabase project.
+2. In Supabase SQL editor, run:
+
+```sql
+create table if not exists public.user_state (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  goal jsonb,
+  plan jsonb,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_state enable row level security;
+
+create policy "users_select_own_state"
+  on public.user_state
+  for select
+  using (auth.uid() = user_id);
+
+create policy "users_insert_own_state"
+  on public.user_state
+  for insert
+  with check (auth.uid() = user_id);
+
+create policy "users_update_own_state"
+  on public.user_state
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+```
+
+3. **Nutrition log table** (for calorie logging). Run in Supabase SQL editor:
+
+```sql
+create table if not exists public.nutrition_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  log_date date not null,
+  food_fdc_id text,
+  food_name text not null,
+  amount numeric not null default 1,
+  unit text not null default 'serving',
+  calories numeric not null default 0,
+  protein numeric,
+  carbs numeric,
+  fat numeric,
+  created_at timestamptz not null default now()
+);
+
+alter table public.nutrition_log enable row level security;
+
+create policy "users_select_own_nutrition"
+  on public.nutrition_log for select using (auth.uid() = user_id);
+create policy "users_insert_own_nutrition"
+  on public.nutrition_log for insert with check (auth.uid() = user_id);
+create policy "users_update_own_nutrition"
+  on public.nutrition_log for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "users_delete_own_nutrition"
+  on public.nutrition_log for delete using (auth.uid() = user_id);
+```
+
+4. In frontend env vars (see below), set:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_API_BASE_URL` (your Garmin backend URL; optional if `public/config.json` has `apiBaseUrl`)
+
+**Next steps so the app works with Supabase (locally and on deploy):**
+
+- **Get your Supabase keys:** In Supabase dashboard → Project Settings → API: copy **Project URL** and **anon public** key.
+- **Local:** In the repo, copy `.env.example` to `.env.local`, then paste your real values:
+  - `VITE_SUPABASE_URL` = Project URL
+  - `VITE_SUPABASE_ANON_KEY` = anon public key
+  - `VITE_API_BASE_URL` = your backend URL (e.g. `https://garmin-backend-xxx.onrender.com`), or leave blank if you use `public/config.json`
+- **Netlify (deploy):** Site configuration → Environment variables → Add the same names (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL`) with the same values. Redeploy so the build picks them up.
+- **Run locally:** `npm run dev` — the app will use `.env.local` and you should get login and data sync.
 
 ## Install on iPhone (Add to Home Screen)
 

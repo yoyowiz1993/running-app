@@ -1,9 +1,11 @@
-import { ArrowLeft, Pause, Play, SkipBack, SkipForward, SquareCheck } from 'lucide-react'
+import { ArrowLeft, Pause, Play, SkipBack, SkipForward, SquareCheck, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
+import { pushWorkoutsToGarmin } from '../lib/garmin'
+import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { formatPace } from '../lib/pace'
 import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { formatClock, formatDurationShort } from '../lib/time'
@@ -22,6 +24,7 @@ export function WorkoutPage() {
   }, [plan, workoutId])
 
   const player = useWorkoutPlayer(workout)
+  const [syncing, setSyncing] = useState(false)
 
   const completed = Boolean(workout?.completedAtISO)
 
@@ -31,6 +34,17 @@ export function WorkoutPage() {
     const nextPlan = updateWorkout(plan, updated)
     savePlan(nextPlan)
     setPlan(nextPlan)
+  }
+
+  async function syncWorkout(): Promise<void> {
+    if (!plan || !workout || workout.type === 'rest') return
+    setSyncing(true)
+    const results = await pushWorkoutsToGarmin([toGarminPushInput(workout)])
+    const [patched] = applyPushResults([workout], results)
+    const nextPlan = updateWorkout(plan, patched)
+    savePlan(nextPlan)
+    setPlan(nextPlan)
+    setSyncing(false)
   }
 
   useEffect(() => {
@@ -90,6 +104,20 @@ export function WorkoutPage() {
                   {workout.garminAvgPaceSecPerKm
                     ? formatPace(workout.garminAvgPaceSecPerKm)
                     : null}
+                </div>
+              ) : null}
+              {workout.garminSyncStatus ? (
+                <div
+                  className={`mt-1 text-xs ${
+                    workout.garminSyncStatus === 'synced'
+                      ? 'text-emerald-200'
+                      : workout.garminSyncStatus === 'failed'
+                        ? 'text-red-200'
+                        : 'text-amber-100'
+                  }`}
+                >
+                  Garmin sync: {workout.garminSyncStatus}
+                  {workout.garminSyncMessage ? ` - ${workout.garminSyncMessage}` : ''}
                 </div>
               ) : null}
             </div>
@@ -153,6 +181,13 @@ export function WorkoutPage() {
               <div className="mt-3">
                 <Button variant="ghost" className="w-full" onClick={markComplete}>
                   <SquareCheck className="h-4 w-4" /> Mark workout complete
+                </Button>
+              </div>
+            ) : null}
+            {workout.type !== 'rest' ? (
+              <div className="mt-2">
+                <Button variant="secondary" className="w-full" onClick={() => void syncWorkout()} disabled={syncing}>
+                  <UploadCloud className="h-4 w-4" /> {syncing ? 'Sending to Garmin...' : 'Send to Garmin'}
                 </Button>
               </div>
             ) : null}

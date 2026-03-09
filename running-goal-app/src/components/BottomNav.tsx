@@ -1,4 +1,4 @@
-import { Calendar, Home, Settings } from 'lucide-react'
+import { Calendar, Home, Utensils, Settings } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '../lib/cn'
 
@@ -34,6 +34,7 @@ export function BottomNav() {
         <div className="flex gap-2 rounded-3xl border border-white/10 bg-white/5 p-2">
           <Item to="/" label="Home" icon={Home} />
           <Item to="/calendar" label="Calendar" icon={Calendar} />
+          <Item to="/nutrition" label="Nutrition" icon={Utensils} />
           <Item to="/settings" label="Settings" icon={Settings} />
         </div>
       </div>
