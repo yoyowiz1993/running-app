@@ -41,10 +41,12 @@ function getUnitGrams(food: NutritionFood, unit: string): number | null {
 
 function getMultiplier(food: NutritionFood, amount: number, unit: string): number {
   const safeAmount = amount > 0 ? amount : 1
-  const referenceGrams = getReferenceGrams(food)
+  // USDA nutrients are commonly expressed per 100g when portion weights are missing.
+  // Use 100g fallback so gram-based units still work predictably.
+  const referenceGrams = getReferenceGrams(food) ?? 100
   const unitGrams = getUnitGrams(food, unit)
 
-  if (referenceGrams && unitGrams) {
+  if (unitGrams) {
     return (safeAmount * unitGrams) / referenceGrams
   }
 
@@ -60,7 +62,7 @@ function getUnitOptions(food: NutritionFood): string[] {
   const fromApi = food.portions
     .map((p) => p.unit.trim())
     .filter((u) => u.length > 0)
-  const merged = [...fromApi, ...Object.keys(FALLBACK_UNITS_IN_GRAMS), 'serving']
+  const merged = ['g', ...fromApi, ...Object.keys(FALLBACK_UNITS_IN_GRAMS), 'serving']
   return Array.from(new Set(merged))
 }
 
