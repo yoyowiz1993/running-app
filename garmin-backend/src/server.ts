@@ -22,10 +22,16 @@ function newId(prefix: string): string {
 
 const app = express()
 
-const allowedOrigin = process.env.ALLOWED_ORIGIN || '*'
+const allowedOriginRaw = process.env.ALLOWED_ORIGIN || '*'
+const allowedOrigins = allowedOriginRaw.split(',').map((o) => o.trim()).filter(Boolean)
+const corsOrigin = allowedOrigins.length === 0 || (allowedOrigins.length === 1 && allowedOrigins[0] === '*')
+  ? '*'
+  : allowedOrigins.length === 1
+    ? allowedOrigins[0]
+    : allowedOrigins
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: corsOrigin,
     credentials: false,
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
