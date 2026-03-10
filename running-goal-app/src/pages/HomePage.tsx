@@ -6,7 +6,7 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Help, Input, Label } from '../components/Field'
 import { TopBar } from '../components/TopBar'
-import { formatPace, parsePaceToSecPerKm } from '../lib/pace'
+import { clampPace, formatPace, parsePaceToSecPerKm } from '../lib/pace'
 import { createProgram, deleteProgramEvents } from '../lib/programs'
 import { computeProgress } from '../lib/progress'
 import { fetchGarminActivities } from '../lib/garmin'
@@ -85,7 +85,7 @@ export function HomePage() {
 
     const newGoal: RunningGoal = {
       distanceKm: Math.round(d * 10) / 10,
-      targetPaceSecPerKm: p,
+      targetPaceSecPerKm: clampPace(p),
       raceDateISO: format(startOfDay(rd), 'yyyy-MM-dd'),
       createdAtISO: new Date().toISOString(),
     }

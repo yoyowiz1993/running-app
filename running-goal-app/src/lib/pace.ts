@@ -12,6 +12,9 @@ export function parsePaceToSecPerKm(input: string): number | null {
 
   const n = Number(raw)
   if (!Number.isFinite(n) || n <= 0) return null
+  // 60–900 = seconds (1:00–15:00/km). Avoids "630" → 37800 bug.
+  if (n >= 60 && n <= 900) return Math.round(n)
+  // Small numbers = minutes (e.g. 5, 5.5, 10)
   return Math.round(n * 60)
 }
 
