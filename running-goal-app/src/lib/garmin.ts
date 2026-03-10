@@ -7,7 +7,9 @@ let cachedBase: string | null = null
 export async function getApiBase(): Promise<string> {
   if (cachedBase) return cachedBase
   try {
-    const res = await fetch('/config.json', { cache: 'no-store' })
+    const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '') || ''
+    const path = base ? `${base}/config.json` : '/config.json'
+    const res = await fetch(path, { cache: 'no-store' })
     if (res.ok) {
       const data = (await res.json()) as { apiBaseUrl?: string }
       if (data.apiBaseUrl && data.apiBaseUrl.trim()) {
