@@ -12,6 +12,7 @@ import {
   mapIntervalsLibraryWorkoutToWorkout,
 } from './intervalsIcu'
 import { generatePlanFromAI } from './aiPlanProvider'
+import { generatePlan } from './planGenerator'
 import { validateAndNormalize } from './planSchema'
 
 dotenv.config()
@@ -64,12 +65,6 @@ const intervalsApiKey = process.env.INTERVALS_API_KEY
 const aiApiKey = process.env.AI_API_KEY
 
 app.post('/api/programs/create', async (req, res) => {
-  if (!aiApiKey?.trim()) {
-    return res.status(503).json({
-      error: 'AI program generation not configured. Set AI_API_KEY in the backend environment.',
-      plan: null,
-    })
-  }
   const body = req.body as {
     goal?: { distanceKm?: number; targetPaceSecPerKm?: number; raceDateISO?: string }
     planName?: string
@@ -103,22 +98,68 @@ app.post('/api/programs/create', async (req, res) => {
   }
 
   try {
+    const startDate = new Date(`${startDateStr}T00:00:00.000Z`)
+    const endDate = new Date(`${endDateStr}T00:00:00.000Z`)
     const planNameInput = body.planName?.trim()
-    const rawJson = await generatePlanFromAI({
-      goal: { distanceKm, targetPaceSecPerKm, raceDateISO },
-      startDate: startDateStr,
-      endDate: endDateStr,
-      ...(planNameInput ? { planName: planNameInput } : {}),
-    })
+    let planId: string
+    let startDateISO: string
+    let endDateISO: string
+    let generatedGoal: { distanceKm: number; targetPaceSecPerKm: number; raceDateISO: string; createdAtISO: string }
+    let workouts: Array<{ id: string; dateISO: string; title: string; type: string; plannedDistanceKm?: number; totalDurationSec: number; stages: Array<{ id: string; label: string; kind: string; durationSec: number; targetPaceSecPerKm?: number }> }>
 
-    const validated = validateAndNormalize(rawJson, startDateStr, endDateStr, {
-      distanceKm,
-      targetPaceSecPerKm,
-      raceDateISO,
-    })
+    if (aiApiKey?.trim()) {
+      try {
+        const rawJson = await generatePlanFromAI({
+          goal: { distanceKm, targetPaceSecPerKm, raceDateISO },
+          startDate: startDateStr,
+          endDate: endDateStr,
+          ...(planNameInput ? { planName: planNameInput } : {}),
+        })
+        const validated = validateAndNormalize(rawJson, startDateStr, endDateStr, {
+          distanceKm,
+          targetPaceSecPerKm,
+          raceDateISO,
+        })
+        planId = validated.planId
+        startDateISO = validated.startDateISO
+        endDateISO = validated.endDateISO
+        generatedGoal = validated.goal
+        workouts = validated.workouts
+      } catch (aiErr) {
+        const msg = aiErr instanceof Error ? aiErr.message : String(aiErr)
+        const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('rate')
+        if (isRateLimit) {
+          console.warn('AI quota exceeded, falling back to built-in plan generator:', msg.slice(0, 100))
+        } else {
+          console.warn('AI plan generation failed, falling back to built-in:', msg.slice(0, 100))
+        }
+        const fallback = generatePlan(
+          { distanceKm, targetPaceSecPerKm, raceDateISO },
+          startDate,
+          endDate,
+          planNameInput,
+        )
+        planId = fallback.planId
+        startDateISO = fallback.startDateISO
+        endDateISO = fallback.endDateISO
+        generatedGoal = fallback.goal
+        workouts = fallback.workouts
+      }
+    } else {
+      const fallback = generatePlan(
+        { distanceKm, targetPaceSecPerKm, raceDateISO },
+        startDate,
+        endDate,
+        planNameInput,
+      )
+      planId = fallback.planId
+      startDateISO = fallback.startDateISO
+      endDateISO = fallback.endDateISO
+      generatedGoal = fallback.goal
+      workouts = fallback.workouts
+    }
 
-    const planName = body.planName?.trim() || `Plan ${validated.startDateISO}–${validated.endDateISO}`
-    const { planId, startDateISO, endDateISO, goal: generatedGoal, workouts } = validated
+    const planName = planNameInput || `Plan ${startDateISO}–${endDateISO}`
 
     const workoutsWithIds: Array<(typeof workouts[0]) & { intervalsEventId?: number }> = []
     for (const w of workouts) {
