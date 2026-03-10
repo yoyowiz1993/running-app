@@ -1,0 +1,5 @@
+# Netlify deploy: frontend is in running-goal-app subdirectory
+[build]
+  base = "running-goal-app"
+  publish = "dist"
+  command = "npm run build"
