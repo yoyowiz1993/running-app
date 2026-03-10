@@ -1,5 +1,5 @@
 import { addDays, format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
-import { Activity, CalendarDays, ChevronRight, Flag, Gauge, Link2, List, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Activity, CalendarDays, ChevronRight, Flag, Gauge, List, Plus, Sparkles, Timer, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -13,7 +13,6 @@ import { fetchGarminActivities } from '../lib/garmin'
 import { applyGarminMatches } from '../lib/garminMatching'
 import {
   deletePlan,
-  loadGoal,
   loadActivePlan,
   loadPlans,
   saveGoal,
@@ -22,7 +21,6 @@ import {
 } from '../lib/storage'
 import type { RunningGoal, TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
-import { getGarminAuthUrl } from '../lib/garmin'
 
 function todayISO(): string {
   return format(startOfDay(new Date()), 'yyyy-MM-dd')
@@ -36,23 +34,22 @@ function nextWorkoutFromPlan(plan: TrainingPlan | null): Workout | null {
 
 export function HomePage() {
   const nav = useNavigate()
-  const [goal, setGoal] = useState<RunningGoal | null>(() => loadGoal())
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadActivePlan())
   const [plans, setPlans] = useState<TrainingPlan[]>(() => loadPlans())
 
-  const [distanceKm, setDistanceKm] = useState(() => String(goal?.distanceKm ?? 10))
-  const [paceText, setPaceText] = useState(() => (goal ? formatPace(goal.targetPaceSecPerKm) : '5:30'))
-  const [raceDate, setRaceDate] = useState(() => goal?.raceDateISO ?? format(addDays(new Date(), 56), 'yyyy-MM-dd'))
-  const [planName, setPlanName] = useState(() => `Plan ${format(addDays(new Date(), 56), 'yyyy-MM-dd')}`)
-  const [planStartDate, setPlanStartDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'))
-  const [planEndDate, setPlanEndDate] = useState(() => goal?.raceDateISO ?? format(addDays(new Date(), 56), 'yyyy-MM-dd'))
+  const defaultEndDate = format(addDays(new Date(), 56), 'yyyy-MM-dd')
+
+  const [distanceKm, setDistanceKm] = useState('10')
+  const [paceText, setPaceText] = useState('5:30')
+  const [planName, setPlanName] = useState('')
+  const [planStartDate, setPlanStartDate] = useState(() => todayISO())
+  const [raceDate, setRaceDate] = useState(defaultEndDate)
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('intermediate')
   const [daysPerWeek, setDaysPerWeek] = useState('4')
   const [currentPaceText, setCurrentPaceText] = useState('')
   const [currentWeeklyKm, setCurrentWeeklyKm] = useState('')
   const [longestRecentRunKm, setLongestRecentRunKm] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [garminConnected] = useState(() => localStorage.getItem('runningPlan.garmin.connected') === 'true')
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
@@ -61,6 +58,8 @@ export function HomePage() {
 
   async function syncFromGarmin(currentPlan: TrainingPlan | null): Promise<void> {
     if (!currentPlan) return
+    const connected = localStorage.getItem('runningPlan.garmin.connected') === 'true'
+    if (!connected) return
     const activities = await fetchGarminActivities()
     if (activities.length === 0) return
     const { plan: merged } = applyGarminMatches(currentPlan, activities)
@@ -70,50 +69,26 @@ export function HomePage() {
     }
   }
 
-  function onSaveGoal(): RunningGoal | null {
-    setError(null)
-    const d = Number(distanceKm)
-    const p = parsePaceToSecPerKm(paceText)
-    const rd = parseISO(raceDate)
-    if (!Number.isFinite(d) || d <= 0) {
-      setError('Please enter a valid distance (km).')
-      return null
-    }
-    if (!p) {
-      setError('Please enter pace like 5:30 (min:sec per km).')
-      return null
-    }
-    if (!isValid(rd)) {
-      setError('Please pick a race date.')
-      return null
-    }
-
-    const newGoal: RunningGoal = {
-      distanceKm: Math.round(d * 10) / 10,
-      targetPaceSecPerKm: clampPace(p),
-      raceDateISO: format(startOfDay(rd), 'yyyy-MM-dd'),
-      createdAtISO: new Date().toISOString(),
-    }
-    saveGoal(newGoal)
-    setGoal(newGoal)
-    return newGoal
-  }
-
   async function onCreatePlan(): Promise<void> {
     setError(null)
-    const g = goal ?? onSaveGoal()
-    if (!g) return
 
+    const d = Number(distanceKm)
+    const p = parsePaceToSecPerKm(paceText)
     const start = parseISO(planStartDate)
-    const end = parseISO(planEndDate)
-    if (!isValid(start) || !isValid(end)) {
-      setError('Please pick valid start and end dates.')
-      return
+    const end = parseISO(raceDate)
+
+    if (!Number.isFinite(d) || d <= 0) { setError('Enter a valid distance.'); return }
+    if (!p) { setError('Enter pace like 5:30 (min:sec/km).'); return }
+    if (!isValid(start) || !isValid(end)) { setError('Pick valid dates.'); return }
+    if (isAfter(start, end)) { setError('Start date must be before race day.'); return }
+
+    const goal: RunningGoal = {
+      distanceKm: Math.round(d * 10) / 10,
+      targetPaceSecPerKm: clampPace(p),
+      raceDateISO: format(startOfDay(end), 'yyyy-MM-dd'),
+      createdAtISO: new Date().toISOString(),
     }
-    if (isAfter(start, end)) {
-      setError('Plan start must be before plan end.')
-      return
-    }
+    saveGoal(goal)
 
     const dpw = Math.max(2, Math.min(7, Number(daysPerWeek) || 4))
     const cpace = parsePaceToSecPerKm(currentPaceText)
@@ -123,10 +98,10 @@ export function HomePage() {
     setCreating(true)
     try {
       const { plan: newPlan } = await createProgram({
-        goal: { distanceKm: g.distanceKm, targetPaceSecPerKm: g.targetPaceSecPerKm, raceDateISO: g.raceDateISO },
+        goal: { distanceKm: goal.distanceKm, targetPaceSecPerKm: goal.targetPaceSecPerKm, raceDateISO: goal.raceDateISO },
         planName: planName.trim() || undefined,
         startDate: planStartDate,
-        endDate: planEndDate,
+        endDate: goal.raceDateISO,
         runnerProfile: {
           fitnessLevel,
           daysPerWeek: dpw,
@@ -138,12 +113,10 @@ export function HomePage() {
       savePlan(newPlan)
       setPlan(newPlan)
       setPlans(loadPlans())
-      if (garminConnected) {
-        void syncFromGarmin(newPlan)
-      }
+      void syncFromGarmin(newPlan)
       nav('/calendar')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Create program failed')
+      setError(e instanceof Error ? e.message : 'Failed to create program.')
     } finally {
       setCreating(false)
     }
@@ -156,7 +129,7 @@ export function HomePage() {
   }
 
   function onDeletePlan(p: TrainingPlan): void {
-    if (!window.confirm(`Delete "${p.planName ?? `Plan ${p.raceDateISO}`}"? This cannot be undone.`)) return
+    if (!window.confirm(`Delete "${p.planName ?? 'this plan'}"?`)) return
     setDeletingId(p.id)
     deletePlan(p.id)
     setPlan(loadActivePlan())
@@ -168,392 +141,274 @@ export function HomePage() {
     <div className="min-h-full bg-gradient-to-b from-[#070b14] via-[#070b14] to-[#041a14]">
       <TopBar title="Running Plan" />
 
-      <div className="safe-area-px mx-auto w-full max-w-md px-4 pb-28 pt-5">
-        <Card className="p-4">
-          <div className="flex items-center gap-2 text-white">
-            <Sparkles className="h-5 w-5 text-emerald-300" />
-            <div className="text-base font-semibold">Your goal</div>
+      <div className="safe-area-px mx-auto w-full max-w-md px-4 pb-28 pt-5 space-y-4">
+
+        {/* ── Active plan hero ── */}
+        {plan ? (
+          <Card className="overflow-hidden">
+            <div className="bg-gradient-to-br from-emerald-500/10 via-violet-500/5 to-transparent p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-emerald-400">Active plan</div>
+                  <div className="mt-1 text-lg font-bold text-white">{plan.planName ?? `Plan ${plan.raceDateISO}`}</div>
+                  <div className="mt-0.5 text-sm text-white/50">
+                    {plan.workouts.filter((w) => w.type !== 'rest').length} workouts &middot; {plan.startDateISO} &rarr; {plan.raceDateISO}
+                  </div>
+                </div>
+                <Button variant="primary" size="md" onClick={() => nav('/calendar')}>
+                  <CalendarDays className="h-4 w-4" /> Calendar
+                </Button>
+              </div>
+
+              {nextWorkout ? (
+                <button
+                  type="button"
+                  onClick={() => nav(`/workout/${nextWorkout.id}`)}
+                  className="mt-4 flex w-full items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:bg-black/30"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-violet-500">
+                    <Timer className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-medium text-emerald-400">Next workout</div>
+                    <div className="truncate font-semibold text-white">{nextWorkout.title}</div>
+                    <div className="text-xs text-white/50">
+                      {nextWorkout.dateISO} &middot; {formatDurationShort(nextWorkout.totalDurationSec)}
+                      {nextWorkout.plannedDistanceKm ? ` · ${nextWorkout.plannedDistanceKm} km` : ''}
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-white/30" />
+                </button>
+              ) : null}
+            </div>
+
+            {progress ? (
+              <div className="border-t border-white/5 px-4 py-3 space-y-2.5">
+                <ProgressBar
+                  label="Workouts"
+                  value={`${progress.completedCount}/${progress.totalCount}`}
+                  pct={progress.completionPct}
+                  from="from-emerald-400" to="to-violet-500"
+                />
+                <ProgressBar
+                  label="Distance"
+                  value={`${progress.completedKmToDate.toFixed(1)} / ${progress.plannedKmToDate.toFixed(1)} km`}
+                  pct={progress.plannedKmToDate > 0 ? Math.min(100, (progress.completedKmToDate / progress.plannedKmToDate) * 100) : 0}
+                  from="from-sky-400" to="to-emerald-400"
+                />
+                <ProgressBar
+                  label="Race day"
+                  value={`${progress.raceDaysLeft} days left`}
+                  pct={Math.round(progress.racePct * 100)}
+                  from="from-amber-400" to="to-rose-500"
+                />
+              </div>
+            ) : null}
+          </Card>
+        ) : null}
+
+        {/* ── Create new plan ── */}
+        <Card className="p-5">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-emerald-500">
+              <Sparkles className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <div className="text-base font-bold text-white">{plan ? 'New plan' : 'Create your plan'}</div>
+              <div className="text-xs text-white/40">AI-powered training program</div>
+            </div>
           </div>
 
-          <div className="mt-4 grid gap-3">
-            <div>
-              <Label>
-                <span className="inline-flex items-center gap-2">
-                  <Flag className="h-4 w-4 text-white/70" /> Distance (km)
-                </span>
-              </Label>
-              <Input
-                inputMode="decimal"
-                value={distanceKm}
-                onChange={(e) => setDistanceKm(e.target.value)}
-                placeholder="10"
-              />
-            </div>
+          <div className="mt-5 space-y-4">
+            {/* Race info */}
+            <div className="space-y-3">
+              <SectionLabel icon={<Flag className="h-3.5 w-3.5" />} text="Race details" />
 
-            <div>
-              <Label>
-                <span className="inline-flex items-center gap-2">
-                  <Gauge className="h-4 w-4 text-white/70" /> Target pace (min:sec per km)
-                </span>
-              </Label>
-              <Input
-                inputMode="numeric"
-                value={paceText}
-                onChange={(e) => setPaceText(e.target.value)}
-                placeholder="5:30"
-              />
-              <Help>Example: 5:30 means 5 minutes 30 seconds per kilometer.</Help>
-            </div>
-
-            <div>
-              <Label>
-                <span className="inline-flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4 text-white/70" /> Race date
-                </span>
-              </Label>
-              <Input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} />
-            </div>
-
-            <div>
-              <Label>Plan name</Label>
-              <Input
-                value={planName}
-                onChange={(e) => setPlanName(e.target.value)}
-                placeholder="e.g. Spring 10k"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Plan start</Label>
-                <Input type="date" value={planStartDate} onChange={(e) => setPlanStartDate(e.target.value)} />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Distance (km)</Label>
+                  <Input inputMode="decimal" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} placeholder="10" />
+                </div>
+                <div>
+                  <Label>Goal pace (min:sec/km)</Label>
+                  <Input inputMode="numeric" value={paceText} onChange={(e) => setPaceText(e.target.value)} placeholder="5:30" />
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Start training</Label>
+                  <Input type="date" value={planStartDate} onChange={(e) => setPlanStartDate(e.target.value)} />
+                </div>
+                <div>
+                  <Label>Race day</Label>
+                  <Input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} />
+                </div>
+              </div>
+
               <div>
-                <Label>Plan end</Label>
-                <Input type="date" value={planEndDate} onChange={(e) => setPlanEndDate(e.target.value)} />
+                <Label>Plan name <span className="text-white/30 font-normal">(optional)</span></Label>
+                <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Spring 10k" />
               </div>
             </div>
 
-            <div className="mt-1 border-t border-white/10 pt-3">
-              <div className="flex items-center gap-2 text-white/80">
-                <Activity className="h-4 w-4 text-emerald-300" />
-                <span className="text-sm font-medium">Runner profile</span>
-              </div>
-            </div>
+            {/* Runner profile */}
+            <div className="space-y-3">
+              <SectionLabel icon={<Activity className="h-3.5 w-3.5" />} text="About you" />
 
-            <div>
-              <Label>Fitness level</Label>
-              <Select
-                value={fitnessLevel}
-                onChange={(e) => setFitnessLevel(e.target.value as 'beginner' | 'intermediate' | 'advanced')}
-              >
-                <option value="beginner">Beginner (new to running / &lt; 6 months)</option>
-                <option value="intermediate">Intermediate (6 months – 2 years)</option>
-                <option value="advanced">Advanced (2+ years, regular racing)</option>
-              </Select>
-            </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Level</Label>
+                  <Select value={fitnessLevel} onChange={(e) => setFitnessLevel(e.target.value as 'beginner' | 'intermediate' | 'advanced')}>
+                    <option value="beginner">Beginner</option>
+                    <option value="intermediate">Intermediate</option>
+                    <option value="advanced">Advanced</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Days / week</Label>
+                  <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
+                    <option value="3">3 days</option>
+                    <option value="4">4 days</option>
+                    <option value="5">5 days</option>
+                    <option value="6">6 days</option>
+                    <option value="7">7 days</option>
+                  </Select>
+                </div>
+              </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Days per week</Label>
-                <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
-                  <option value="3">3 days</option>
-                  <option value="4">4 days</option>
-                  <option value="5">5 days</option>
-                  <option value="6">6 days</option>
-                  <option value="7">7 days</option>
-                </Select>
-              </div>
-              <div>
-                <Label>Current easy pace</Label>
-                <Input
-                  inputMode="numeric"
-                  value={currentPaceText}
-                  onChange={(e) => setCurrentPaceText(e.target.value)}
-                  placeholder="e.g. 6:30"
-                />
-                <Help>Your comfortable pace now.</Help>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>Current weekly km</Label>
-                <Input
-                  inputMode="decimal"
-                  value={currentWeeklyKm}
-                  onChange={(e) => setCurrentWeeklyKm(e.target.value)}
-                  placeholder="e.g. 20"
-                />
-                <Help>Optional – your recent average.</Help>
-              </div>
-              <div>
-                <Label>Longest recent run (km)</Label>
-                <Input
-                  inputMode="decimal"
-                  value={longestRecentRunKm}
-                  onChange={(e) => setLongestRecentRunKm(e.target.value)}
-                  placeholder="e.g. 8"
-                />
-                <Help>Optional – in the last 2-4 weeks.</Help>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <Label>Easy pace</Label>
+                  <Input inputMode="numeric" value={currentPaceText} onChange={(e) => setCurrentPaceText(e.target.value)} placeholder="6:30" />
+                  <Help>Now</Help>
+                </div>
+                <div>
+                  <Label>Weekly km</Label>
+                  <Input inputMode="decimal" value={currentWeeklyKm} onChange={(e) => setCurrentWeeklyKm(e.target.value)} placeholder="20" />
+                  <Help>Recent avg</Help>
+                </div>
+                <div>
+                  <Label>Longest run</Label>
+                  <Input inputMode="decimal" value={longestRecentRunKm} onChange={(e) => setLongestRecentRunKm(e.target.value)} placeholder="8" />
+                  <Help>km</Help>
+                </div>
               </div>
             </div>
 
             {error ? (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
                 {error}
               </div>
             ) : null}
 
-            <div className="mt-1 flex gap-2">
-              <Button variant="secondary" className="flex-1" onClick={onSaveGoal}>
-                Save goal
-              </Button>
-              <Button className="flex-1" onClick={() => void onCreatePlan()} disabled={creating}>
-                <Plus className="h-4 w-4" /> {creating ? 'Creating...' : 'Create program'}
-              </Button>
-            </div>
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={() => void onCreatePlan()}
+              disabled={creating}
+            >
+              {creating ? (
+                <>
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Generating plan...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-5 w-5" /> Generate AI plan
+                </>
+              )}
+            </Button>
           </div>
         </Card>
 
+        {/* ── Plan list ── */}
         {plans.length > 0 ? (
-          <Card className="mt-4 p-4">
-            <div className="flex items-center gap-2 text-white">
-              <List className="h-5 w-5 text-emerald-300" />
-              <div className="text-base font-semibold">Your programs</div>
+          <Card className="p-4">
+            <div className="flex items-center gap-2">
+              <List className="h-4 w-4 text-emerald-400" />
+              <div className="text-sm font-semibold text-white">Your plans</div>
+              <div className="ml-auto rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/60">{plans.length}</div>
             </div>
-            <div className="mt-3 space-y-2">
-              {plans.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20"
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchPlan(p.id)
-                      nav('/calendar')
-                    }}
-                    className="min-w-0 flex-1 px-3 py-2.5 text-left transition hover:bg-black/30"
+            <div className="mt-3 space-y-1.5">
+              {plans.map((p) => {
+                const isActive = plan?.id === p.id
+                return (
+                  <div
+                    key={p.id}
+                    className={`flex items-center gap-1.5 rounded-xl transition ${isActive ? 'border border-emerald-500/30 bg-emerald-500/5' : 'border border-white/5 bg-black/20 hover:bg-black/30'}`}
                   >
-                    <div className="font-medium text-white">{p.planName ?? `Plan ${p.raceDateISO}`}</div>
-                    <div className="text-xs text-white/60">
-                      {p.workouts.length} workouts • {p.startDateISO} – {p.raceDateISO}
-                      {p.generatedBy === 'ai' ? ' • AI' : p.generatedBy === 'builtin' ? ' • Built-in' : p.source === 'intervals_icu' ? ' • Intervals.icu' : ''}
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      void onDeletePlan(p)
-                    }}
-                    disabled={deletingId === p.id}
-                    className="shrink-0 rounded-lg p-2 text-white/50 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-50"
-                    aria-label="Delete program"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      switchPlan(p.id)
-                      nav('/calendar')
-                    }}
-                    className="shrink-0 rounded-lg p-2 text-white/50 transition hover:bg-white/10"
-                    aria-label="Open calendar"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : null}
-
-        {plan ? (
-          <>
-            <Card className="mt-4 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <div className="text-base font-semibold text-white">Current plan</div>
-                    {plans.length > 1 ? (
-                      <select
-                        value={plan.id}
-                        onChange={(e) => switchPlan(e.target.value)}
-                        className="rounded-lg border border-white/20 bg-black/30 px-2 py-1 text-sm text-white outline-none focus:border-emerald-400/50"
-                      >
-                        {plans.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.planName ?? `Plan ${p.raceDateISO}`}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
-                  </div>
-                  <div className="mt-1 text-sm text-white/70">
-                    {plan.planName ? `${plan.planName} • ` : ''}
-                    {plan.workouts.length} workouts • {plan.startDateISO} – {plan.raceDateISO}
-                  </div>
-                  {plan.generatedBy ? (
-                    <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-white/80" style={{ backgroundColor: plan.generatedBy === 'ai' ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)' }}>
-                      {plan.generatedBy === 'ai' ? (
-                        <>AI-generated</>
-                      ) : (
-                        <>Built-in (AI unavailable)</>
-                      )}
-                    </div>
-                  ) : null}
-                  {garminConnected ? (
-                    <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Garmin connected
-                    </div>
-                  ) : null}
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                  <Button variant="ghost" onClick={() => nav('/calendar')}>
-                    View
-                  </Button>
-                  {!garminConnected ? (
                     <button
                       type="button"
-                      onClick={() => {
-                        getGarminAuthUrl().then((url) => {
-                          window.location.href = url
-                        })
-                      }}
-                      className="inline-flex items-center gap-1 text-xs text-emerald-200 underline decoration-emerald-500/60 underline-offset-2"
+                      onClick={() => { switchPlan(p.id); nav('/calendar') }}
+                      className="min-w-0 flex-1 px-3 py-2.5 text-left"
                     >
-                      <Link2 className="h-3 w-3" />
-                      Connect Garmin
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {nextWorkout ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-3">
-                  <div className="text-sm font-semibold text-white">Next up</div>
-                  <div className="mt-1 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-white">{nextWorkout.title}</div>
-                      <div className="text-xs text-white/60">
-                        {nextWorkout.dateISO} • {formatDurationShort(nextWorkout.totalDurationSec)}
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-white">{p.planName ?? `Plan ${p.raceDateISO}`}</span>
+                        {isActive ? <span className="shrink-0 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">ACTIVE</span> : null}
                       </div>
-                    </div>
-                    <Button size="md" onClick={() => nav(`/workout/${nextWorkout.id}`)}>
-                      Start
-                    </Button>
+                      <div className="mt-0.5 text-xs text-white/40">
+                        {p.workouts.filter((w) => w.type !== 'rest').length} workouts &middot; {p.startDateISO} &rarr; {p.raceDateISO}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onDeletePlan(p) }}
+                      disabled={deletingId === p.id}
+                      className="shrink-0 rounded-lg p-2 text-white/30 transition hover:bg-red-500/20 hover:text-red-300 disabled:opacity-50"
+                      aria-label="Delete"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { switchPlan(p.id); nav('/calendar') }}
+                      className="shrink-0 rounded-lg p-2 text-white/30 transition hover:bg-white/10 hover:text-white/60"
+                      aria-label="Open"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </div>
-                </div>
-              ) : null}
-            </Card>
-
-            {progress ? (
-              <Card className="mt-4 p-4">
-                <div className="text-base font-semibold text-white">Progress</div>
-
-                <div className="mt-3 grid gap-3 text-sm">
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-white/60">
-                      <span>Workouts completed</span>
-                      <span>
-                        {progress.completedCount}/{progress.totalCount} ({progress.completionPct}%)
-                      </span>
-                    </div>
-                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-violet-500 transition-[width]"
-                        style={{ width: `${progress.completionPct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-white/60">
-                      <span>Distance so far</span>
-                      <span>
-                        {progress.completedKmToDate.toFixed(1)}km /{' '}
-                        {progress.plannedKmToDate.toFixed(1)}km planned
-                      </span>
-                    </div>
-                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400 transition-[width]"
-                        style={{
-                          width:
-                            progress.plannedKmToDate > 0
-                              ? `${Math.min(
-                                  100,
-                                  (progress.completedKmToDate / progress.plannedKmToDate) * 100,
-                                )}%`
-                              : '0%',
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between text-xs text-white/60">
-                      <span>Race countdown</span>
-                      <span>
-                        {progress.raceDaysLeft} days left •{' '}
-                        {Math.round(progress.racePct * 100)}% through plan
-                      </span>
-                    </div>
-                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-amber-400 to-rose-500 transition-[width]"
-                        style={{ width: `${Math.round(progress.racePct * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {progress.weeklyKm.length > 0 ? (
-                  <div className="mt-4">
-                    <div className="text-xs font-semibold uppercase tracking-wide text-white/50">
-                      Last weeks (completed km)
-                    </div>
-                    <div className="mt-2 flex h-28 items-end gap-3">
-                      {progress.weeklyKm.map((w) => {
-                        const ratio =
-                          progress.maxWeeklyKm > 0 ? w.km / progress.maxWeeklyKm : 0
-                        const heightPct = Math.max(0.12, Math.min(1, ratio))
-                        return (
-                          <div
-                            key={w.key}
-                            className="flex flex-1 flex-col items-center justify-end gap-1 text-xs text-white/60"
-                          >
-                            <div className="flex h-20 w-full items-end justify-center rounded-full bg-white/8">
-                              <div
-                                className="w-7 rounded-full bg-gradient-to-t from-emerald-400 to-violet-500"
-                                style={{ height: `${Math.round(heightPct * 100)}%` }}
-                              />
-                            </div>
-                            <div className="text-[10px]">{Math.round(w.km)} km</div>
-                            <div className="text-[10px]">{w.label}</div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </Card>
-            ) : null}
-          </>
-        ) : (
-          <Card className="mt-4 p-4">
-            <div className="text-base font-semibold text-white">No plan yet</div>
-            <div className="mt-1 text-sm text-white/70">
-              Save a goal, then tap <span className="font-semibold text-white">Create program</span> to build your training
-              calendar.
+                )
+              })}
             </div>
           </Card>
-        )}
+        ) : !plan ? (
+          <Card className="p-5 text-center">
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-white/5">
+              <Gauge className="h-6 w-6 text-white/20" />
+            </div>
+            <div className="text-sm font-medium text-white/50">No plans yet</div>
+            <div className="mt-1 text-xs text-white/30">Fill in the form above to generate your first AI training plan.</div>
+          </Card>
+        ) : null}
       </div>
     </div>
   )
 }
 
+function SectionLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+      <span className="text-emerald-400">{icon}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-white/40">{text}</span>
+    </div>
+  )
+}
+
+function ProgressBar({ label, value, pct, from, to }: { label: string; value: string; pct: number; from: string; to: string }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-white/50">
+        <span>{label}</span>
+        <span>{value}</span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full bg-gradient-to-r ${from} ${to} transition-[width]`}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+    </div>
+  )
+}
