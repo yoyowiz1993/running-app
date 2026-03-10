@@ -120,23 +120,23 @@ app.post('/api/programs/create', async (req, res) => {
 
     const planName = planNameInput || `Plan ${startDateISO}–${endDateISO}`
 
-    const workoutsWithIds: Array<(typeof workouts[0]) & { intervalsEventId?: number }> = []
-    for (const w of workouts) {
-      try {
-        if (!intervalsApiKey?.trim()) continue
-        const desc = w.stages.map((s) => `${s.label}: ${Math.round(s.durationSec / 60)}min${s.targetPaceSecPerKm ? ` @ ${Math.floor(s.targetPaceSecPerKm / 60)}:${String(s.targetPaceSecPerKm % 60).padStart(2, '0')}/km` : ''}`).join('\n')
-        const { id } = await createIntervalsEvent(intervalsApiKey, {
-          dateISO: w.dateISO,
-          name: w.title,
-          movingTimeSec: w.totalDurationSec,
-          description: desc,
-        })
-        workoutsWithIds.push({ ...w, intervalsEventId: id })
-      } catch (err) {
-        console.warn('Failed to create Intervals event for workout', w.dateISO, w.title, err)
-        workoutsWithIds.push({ ...w })
-      }
-    }
+    const workoutsWithIds: Array<(typeof workouts[0]) & { intervalsEventId?: number }> = intervalsApiKey?.trim()
+      ? await Promise.all(workouts.map(async (w) => {
+          try {
+            const desc = w.stages.map((s) => `${s.label}: ${Math.round(s.durationSec / 60)}min${s.targetPaceSecPerKm ? ` @ ${Math.floor(s.targetPaceSecPerKm / 60)}:${String(s.targetPaceSecPerKm % 60).padStart(2, '0')}/km` : ''}`).join('\n')
+            const { id } = await createIntervalsEvent(intervalsApiKey, {
+              dateISO: w.dateISO,
+              name: w.title,
+              movingTimeSec: w.totalDurationSec,
+              description: desc,
+            })
+            return { ...w, intervalsEventId: id }
+          } catch (err) {
+            console.warn('Failed to create Intervals event for workout', w.dateISO, w.title, err)
+            return { ...w }
+          }
+        }))
+      : workouts.map((w) => ({ ...w }))
 
     const plan = {
       version: 1 as const,
