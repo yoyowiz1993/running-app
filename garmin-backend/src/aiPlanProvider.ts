@@ -42,42 +42,91 @@ function paceToReadable(secPerKm: number): string {
   return `${m}:${String(s).padStart(2, '0')}/km`
 }
 
-const SYSTEM_PROMPT = `You are a professional running coach. Generate a structured training plan as valid JSON only. No markdown, no code blocks, no explanations.
+const SYSTEM_PROMPT = `You are an elite running coach building a training plan. Return ONLY valid JSON — no markdown, no code fences, no commentary.
 
-Rules:
-- Progressive overload: weekly volume increases gradually, max ~10% per week.
-- Recovery week every 4th week: reduce volume ~20%.
-- Taper: last 2 weeks before race, reduce volume significantly (week -2: ~70%, week -1: ~50%).
-- Weekly distribution: 4 runs/week typical—intervals, tempo, easy, long run.
-- Pace ranges: easy = target + 75–95 sec/km, tempo = target + 15–25, intervals = target - 15–30, long = target + 90–110.
-- All dates must be between startDate and endDate (inclusive).
+## Plan structure rules
+
+WEEKLY TEMPLATE (adapt to available days):
+- 4–6 running days per week. Max 2 rest days per week, NEVER alternate run/rest/run/rest.
+- Group rest days (e.g. Monday + Friday off, or just 1 day off).
+- Weekly pattern example: Mon=easy, Tue=intervals/tempo, Wed=easy, Thu=rest, Fri=tempo/intervals, Sat=long, Sun=rest.
+
+PERIODIZATION:
+- Weeks 1–3: build phase — increase weekly volume ~8-10% per week.
+- Week 4: recovery — reduce volume ~20-25% but keep all workout types.
+- Repeat build/recovery cycle.
+- Final 7–10 days before race: taper — reduce volume to ~60% of peak but keep 1-2 quality sessions at race pace.
+- Race day: single workout of type "race" on the race date.
+
+SHORT PLANS (under 4 weeks):
+- Do NOT taper from day 1. Build or maintain for 60-70% of the plan, then taper the final 5-7 days.
+- Still include 4-6 runs per week during the build phase.
+- The long run should be at or near race distance (not half of it).
+
+WORKOUT QUALITY:
+- Easy runs: minimum 4 km (beginners) to 8 km (advanced). Easy pace = target pace + 60-90 sec/km.
+- Long runs: 1.0x to 1.5x race distance during build phase. Pace = target + 60-90 sec/km.
+- Tempo runs: 3-6 km at tempo pace (target + 10-20 sec/km), plus warmup and cooldown.
+- Intervals: 4-8 repetitions of 400m-1000m at interval pace (target - 10-30 sec/km) with recovery jogs.
+- Every tempo and interval workout MUST have a warmup (10-15 min easy) and cooldown (10-15 min easy).
+- Rest days: type "rest" with a single stage of kind "rest" and durationSec 0.
+
+PACING (all values in seconds per kilometer):
+- Easy/long pace: targetPace + 60 to targetPace + 90
+- Tempo pace: targetPace + 10 to targetPace + 20
+- Interval pace: targetPace - 10 to targetPace - 30
+- Race pace: exactly targetPace
+
+DISTANCE GUIDELINES (adapt to race distance):
+- 5K plan: easy 4-6 km, long 6-8 km, weekly total 20-35 km
+- 10K plan: easy 5-8 km, long 8-12 km, weekly total 30-50 km
+- Half marathon: easy 6-10 km, long 14-20 km, weekly total 40-65 km
+- Marathon: easy 8-14 km, long 22-35 km, weekly total 50-90 km
+
+## Output schema constraints
 - Workout types: exactly one of "easy" | "long" | "tempo" | "intervals" | "race" | "rest".
 - Stage kinds: exactly one of "warmup" | "easy" | "tempo" | "interval" | "recovery" | "cooldown" | "race" | "rest".
-- Race day: one workout of type "race" on the race date.
-- Output ONLY the JSON object, nothing else.`
+- All dates must be between startDate and endDate inclusive, format YYYY-MM-DD.
+- totalDurationSec MUST equal the sum of all stages' durationSec.
+- plannedDistanceKm must be realistic given pace and duration.
+- Output ONLY the JSON object.`
 
 function buildUserPrompt(input: AiPlanInput): string {
   const pace = paceToReadable(input.goal.targetPaceSecPerKm)
-  return `Create a running training plan with these inputs:
-- Distance goal: ${input.goal.distanceKm} km (e.g. 10k, half marathon, marathon)
+  const startD = new Date(input.startDate + 'T00:00:00Z')
+  const endD = new Date(input.endDate + 'T00:00:00Z')
+  const totalDays = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1
+  const totalWeeks = Math.round(totalDays / 7 * 10) / 10
+
+  return `Create a running training plan:
+- Race distance: ${input.goal.distanceKm} km
 - Target race pace: ${pace} (${input.goal.targetPaceSecPerKm} sec/km)
 - Race date: ${input.goal.raceDateISO}
-- Plan start date: ${input.startDate}
-- Plan end date: ${input.endDate}
+- Plan start: ${input.startDate}
+- Plan end: ${input.endDate}
+- Duration: ${totalDays} days (~${totalWeeks} weeks)
 ${input.planName ? `- Plan name: ${input.planName}` : ''}
 
-Return a JSON object with this exact structure (no other keys, no extra text):
+IMPORTANT REQUIREMENTS:
+- Generate a workout for EVERY day from ${input.startDate} to ${input.endDate} (${totalDays} days total).
+- Include 4-6 running days per week. Max 1-2 rest days per week.
+- Do NOT alternate rest/run/rest/run. Cluster the rest days.
+- Long run should be ${input.goal.distanceKm >= 21 ? '18-32' : input.goal.distanceKm >= 10 ? '8-12' : '5-8'} km during peak weeks.
+- Easy runs should be at least ${input.goal.distanceKm >= 21 ? '8' : input.goal.distanceKm >= 10 ? '5' : '4'} km.
+${totalDays <= 21 ? '- SHORT PLAN: maintain high volume for the first 60-70% of days, only taper the final 5-7 days.' : ''}
+
+Return JSON:
 {
   "workouts": [
     {
       "dateISO": "YYYY-MM-DD",
-      "title": "string",
+      "title": "descriptive name",
       "type": "easy|long|tempo|intervals|race|rest",
       "plannedDistanceKm": number,
       "totalDurationSec": number,
       "stages": [
         {
-          "label": "string",
+          "label": "descriptive label",
           "kind": "warmup|easy|tempo|interval|recovery|cooldown|race|rest",
           "durationSec": number,
           "targetPaceSecPerKm": number
@@ -85,9 +134,7 @@ Return a JSON object with this exact structure (no other keys, no extra text):
       ]
     }
   ]
-}
-
-Ensure totalDurationSec equals sum of stages' durationSec. Generate the complete plan.`
+}`
 }
 
 export async function generatePlanFromAI(input: AiPlanInput): Promise<string> {
@@ -105,7 +152,7 @@ export async function generatePlanFromAI(input: AiPlanInput): Promise<string> {
       temperature: 0.3,
       maxOutputTokens: 65536,
       responseMimeType: 'application/json',
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingBudget: 1024 },
     },
   }
 
