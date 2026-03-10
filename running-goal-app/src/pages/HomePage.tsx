@@ -1,5 +1,5 @@
 import { addDays, format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
-import { CalendarDays, Download, Flag, Gauge, Link2, Plus, Sparkles } from 'lucide-react'
+import { CalendarDays, ChevronRight, Flag, Gauge, Link2, List, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -7,11 +7,12 @@ import { Card } from '../components/Card'
 import { Help, Input, Label } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { formatPace, parsePaceToSecPerKm } from '../lib/pace'
-import { generateTrainingPlan } from '../lib/plan'
+import { createProgram, deleteProgramEvents } from '../lib/programs'
 import { computeProgress } from '../lib/progress'
 import { fetchGarminActivities } from '../lib/garmin'
 import { applyGarminMatches } from '../lib/garminMatching'
 import {
+  deletePlan,
   loadGoal,
   loadActivePlan,
   loadPlans,
@@ -22,11 +23,6 @@ import {
 import type { RunningGoal, TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
 import { getGarminAuthUrl } from '../lib/garmin'
-import {
-  getStoredIntervalsApiKey,
-  importFromIntervalsIcu,
-  setStoredIntervalsApiKey,
-} from '../lib/intervalsIcu'
 
 function todayISO(): string {
   return format(startOfDay(new Date()), 'yyyy-MM-dd')
@@ -52,16 +48,8 @@ export function HomePage() {
   const [planEndDate, setPlanEndDate] = useState(() => goal?.raceDateISO ?? format(addDays(new Date(), 56), 'yyyy-MM-dd'))
   const [error, setError] = useState<string | null>(null)
   const [garminConnected] = useState(() => localStorage.getItem('runningPlan.garmin.connected') === 'true')
-  const [intervalsApiKey, setIntervalsApiKey] = useState(() => getStoredIntervalsApiKey())
-  const [intervalsOldest, setIntervalsOldest] = useState(() =>
-    format(addDays(new Date(), -14), 'yyyy-MM-dd'),
-  )
-  const [intervalsNewest, setIntervalsNewest] = useState(() =>
-    format(addDays(new Date(), 42), 'yyyy-MM-dd'),
-  )
-  const [intervalsPlanName, setIntervalsPlanName] = useState('')
-  const [intervalsImporting, setIntervalsImporting] = useState(false)
-  const [intervalsError, setIntervalsError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   const nextWorkout = useMemo(() => nextWorkoutFromPlan(plan), [plan])
   const progress = useMemo(() => (plan ? computeProgress(plan, new Date()) : null), [plan])
@@ -106,7 +94,7 @@ export function HomePage() {
     return newGoal
   }
 
-  function onCreatePlan(): void {
+  async function onCreatePlan(): Promise<void> {
     setError(null)
     const g = goal ?? onSaveGoal()
     if (!g) return
@@ -122,18 +110,26 @@ export function HomePage() {
       return
     }
 
-    const newPlan = generateTrainingPlan(g, new Date(), {
-      startDate: start,
-      endDate: end,
-      planName: planName.trim() || undefined,
-    })
-    savePlan(newPlan)
-    setPlan(newPlan)
-    setPlans(loadPlans())
-    if (garminConnected) {
-      void syncFromGarmin(newPlan)
+    setCreating(true)
+    try {
+      const { plan: newPlan } = await createProgram({
+        goal: { distanceKm: g.distanceKm, targetPaceSecPerKm: g.targetPaceSecPerKm, raceDateISO: g.raceDateISO },
+        planName: planName.trim() || undefined,
+        startDate: planStartDate,
+        endDate: planEndDate,
+      })
+      savePlan(newPlan)
+      setPlan(newPlan)
+      setPlans(loadPlans())
+      if (garminConnected) {
+        void syncFromGarmin(newPlan)
+      }
+      nav('/calendar')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Create program failed')
+    } finally {
+      setCreating(false)
     }
-    nav('/calendar')
   }
 
   function switchPlan(planId: string): void {
@@ -142,29 +138,21 @@ export function HomePage() {
     setPlans(loadPlans())
   }
 
-  async function onImportFromIntervals(): Promise<void> {
-    setIntervalsError(null)
-    if (!intervalsApiKey.trim()) {
-      setIntervalsError('Enter your Intervals.icu API key from Developer Settings.')
-      return
-    }
-    setIntervalsImporting(true)
+  async function onDeletePlan(p: TrainingPlan): Promise<void> {
+    if (!window.confirm(`Delete "${p.planName ?? `Plan ${p.raceDateISO}`}"? This cannot be undone.`)) return
+    setDeletingId(p.id)
     try {
-      const { plan: newPlan } = await importFromIntervalsIcu({
-        apiKey: intervalsApiKey,
-        oldest: intervalsOldest,
-        newest: intervalsNewest,
-        planName: intervalsPlanName.trim() || undefined,
-      })
-      setStoredIntervalsApiKey(intervalsApiKey)
-      savePlan(newPlan)
-      setPlan(newPlan)
+      const eventIds = p.workouts
+        .map((w) => w.intervalsEventId)
+        .filter((id): id is number => typeof id === 'number')
+      if (eventIds.length > 0) {
+        await deleteProgramEvents(eventIds)
+      }
+      deletePlan(p.id)
+      setPlan(loadActivePlan())
       setPlans(loadPlans())
-      nav('/calendar')
-    } catch (e) {
-      setIntervalsError(e instanceof Error ? e.message : 'Import failed')
     } finally {
-      setIntervalsImporting(false)
+      setDeletingId(null)
     }
   }
 
@@ -248,63 +236,67 @@ export function HomePage() {
               <Button variant="secondary" className="flex-1" onClick={onSaveGoal}>
                 Save goal
               </Button>
-              <Button className="flex-1" onClick={onCreatePlan}>
-                <Plus className="h-4 w-4" /> Create plan
+              <Button className="flex-1" onClick={() => void onCreatePlan()} disabled={creating}>
+                <Plus className="h-4 w-4" /> {creating ? 'Creating...' : 'Create program'}
               </Button>
             </div>
           </div>
         </Card>
 
-        <Card className="mt-4 p-4">
-          <div className="flex items-center gap-2 text-white">
-            <Download className="h-5 w-5 text-sky-300" />
-            <div className="text-base font-semibold">Import from Intervals.icu</div>
-          </div>
-          <div className="mt-2 text-sm text-white/70">
-            Free coach-level plans. Get your API key from Intervals.icu → Settings → Developer Settings.
-          </div>
-          <div className="mt-3 grid gap-2">
-            <div>
-              <Label>API key</Label>
-              <Input
-                type="password"
-                value={intervalsApiKey}
-                onChange={(e) => setIntervalsApiKey(e.target.value)}
-                placeholder="Paste from Intervals.icu"
-              />
+        {plans.length > 0 ? (
+          <Card className="mt-4 p-4">
+            <div className="flex items-center gap-2 text-white">
+              <List className="h-5 w-5 text-emerald-300" />
+              <div className="text-base font-semibold">Your programs</div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label>From</Label>
-                <Input type="date" value={intervalsOldest} onChange={(e) => setIntervalsOldest(e.target.value)} />
-              </div>
-              <div>
-                <Label>To</Label>
-                <Input type="date" value={intervalsNewest} onChange={(e) => setIntervalsNewest(e.target.value)} />
-              </div>
+            <div className="mt-3 space-y-2">
+              {plans.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/20"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchPlan(p.id)
+                      nav('/calendar')
+                    }}
+                    className="min-w-0 flex-1 px-3 py-2.5 text-left transition hover:bg-black/30"
+                  >
+                    <div className="font-medium text-white">{p.planName ?? `Plan ${p.raceDateISO}`}</div>
+                    <div className="text-xs text-white/60">
+                      {p.workouts.length} workouts • {p.startDateISO} – {p.raceDateISO}
+                      {p.source === 'intervals_icu' ? ' • Intervals.icu' : ''}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void onDeletePlan(p)
+                    }}
+                    disabled={deletingId === p.id}
+                    className="shrink-0 rounded-lg p-2 text-white/50 transition hover:bg-red-500/20 hover:text-red-200 disabled:opacity-50"
+                    aria-label="Delete program"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      switchPlan(p.id)
+                      nav('/calendar')
+                    }}
+                    className="shrink-0 rounded-lg p-2 text-white/50 transition hover:bg-white/10"
+                    aria-label="Open calendar"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
             </div>
-            <div>
-              <Label>Plan name (optional)</Label>
-              <Input
-                value={intervalsPlanName}
-                onChange={(e) => setIntervalsPlanName(e.target.value)}
-                placeholder="e.g. Coach plan Spring"
-              />
-            </div>
-            {intervalsError ? (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                {intervalsError}
-              </div>
-            ) : null}
-            <Button
-              variant="secondary"
-              onClick={() => void onImportFromIntervals()}
-              disabled={intervalsImporting}
-            >
-              <Download className="h-4 w-4" /> {intervalsImporting ? 'Importing...' : 'Import run workouts'}
-            </Button>
-          </div>
-        </Card>
+          </Card>
+        ) : null}
 
         {plan ? (
           <>
@@ -473,7 +465,7 @@ export function HomePage() {
           <Card className="mt-4 p-4">
             <div className="text-base font-semibold text-white">No plan yet</div>
             <div className="mt-1 text-sm text-white/70">
-              Save a goal, then tap <span className="font-semibold text-white">Create plan</span> to build your training
+              Save a goal, then tap <span className="font-semibold text-white">Create program</span> to build your training
               calendar.
             </div>
           </Card>

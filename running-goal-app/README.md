@@ -3,8 +3,9 @@
 Mobile-first web app that lets you:
 
 - Set a **race goal** (distance, target pace, race date)
-- Tap **Create plan** to generate a training plan
-- Follow the plan in a **training calendar**
+- Tap **Create program** to generate a training program (workouts are created in Intervals.icu behind the scenes; no API key needed)
+- Manage **multiple programs** – list, switch, open calendar, delete
+- Tap a program to open its **training calendar**
 - Tap **Start** on any workout to run it interactively with **stage timers** (warmup → main set → cooldown)
 
 Data is cached locally and synced per user account via Supabase.
@@ -110,6 +111,8 @@ Or run `supabase-multi-plan.sql` from this repo.
   - `VITE_SUPABASE_URL` = Project URL
   - `VITE_SUPABASE_ANON_KEY` = anon public key
   - `VITE_API_BASE_URL` = your backend URL (e.g. `https://garmin-backend-xxx.onrender.com`), or leave blank if you use `public/config.json`
+
+**Backend requirement for Create program:** The backend must have `INTERVALS_API_KEY` set (from Intervals.icu Developer Settings). Programs are created in Intervals.icu via the backend; users never see or enter an API key.
 - **Netlify (deploy):** Site configuration → Environment variables → Add the same names (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_BASE_URL`) with the same values. Redeploy so the build picks them up.
 - **Run locally:** `npm run dev` — the app will use `.env.local` and you should get login and data sync.
 

@@ -157,3 +157,58 @@ export async function fetchIntervalsWorkouts(apiKey: string): Promise<IntervalsW
   const data = (await res.json()) as IntervalsWorkout[]
   return Array.isArray(data) ? data : []
 }
+
+export type CreateEventInput = {
+  dateISO: string
+  name: string
+  movingTimeSec: number
+  description?: string
+}
+
+export async function createIntervalsEvent(
+  apiKey: string,
+  input: CreateEventInput,
+): Promise<{ id: number }> {
+  const auth = Buffer.from(`API_KEY:${apiKey}`).toString('base64')
+  const startDateLocal = `${input.dateISO}T09:00:00`
+  const body = {
+    start_date_local: startDateLocal,
+    end_date_local: startDateLocal,
+    name: input.name,
+    type: 'Run',
+    category: 'WORKOUT',
+    moving_time: input.movingTimeSec,
+    ...(input.description ? { description: input.description } : {}),
+  }
+  const url = `${INTERVALS_BASE}/api/v1/athlete/0/events`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${auth}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Intervals.icu create event error ${res.status}: ${text.slice(0, 300)}`)
+  }
+  const data = (await res.json()) as IntervalsEvent & { id: number }
+  if (typeof data?.id !== 'number') {
+    throw new Error('Intervals.icu create event: missing id in response')
+  }
+  return { id: data.id }
+}
+
+export async function deleteIntervalsEvent(apiKey: string, eventId: number): Promise<void> {
+  const auth = Buffer.from(`API_KEY:${apiKey}`).toString('base64')
+  const url = `${INTERVALS_BASE}/api/v1/athlete/0/events/${eventId}`
+  const res = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Basic ${auth}` },
+  })
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text()
+    throw new Error(`Intervals.icu delete event error ${res.status}: ${text.slice(0, 200)}`)
+  }
+}

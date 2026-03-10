@@ -4,11 +4,14 @@ import dotenv from 'dotenv'
 import { buildAuthUrl, exchangeCodeForToken, generatePKCE } from './garminAuth'
 import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
 import {
+  createIntervalsEvent,
+  deleteIntervalsEvent,
   fetchIntervalsEvents,
   fetchIntervalsWorkouts,
   mapIntervalsEventToWorkout,
   mapIntervalsLibraryWorkoutToWorkout,
 } from './intervalsIcu'
+import { generatePlan } from './planGenerator'
 
 dotenv.config()
 
@@ -49,6 +52,124 @@ app.get('/api/activities', (_req, res) => {
 
 const usdaApiKey = process.env.USDA_API_KEY
 const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1'
+
+const intervalsApiKey = process.env.INTERVALS_API_KEY
+
+app.post('/api/programs/create', async (req, res) => {
+  if (!intervalsApiKey?.trim()) {
+    return res.status(503).json({
+      error: 'Intervals.icu integration not configured. Set INTERVALS_API_KEY in the backend environment.',
+      plan: null,
+    })
+  }
+  const body = req.body as {
+    goal?: { distanceKm?: number; targetPaceSecPerKm?: number; raceDateISO?: string }
+    planName?: string
+    startDate?: string
+    endDate?: string
+  }
+  const goal = body?.goal
+  const distanceKm = Number(goal?.distanceKm)
+  const targetPaceSecPerKm = Number(goal?.targetPaceSecPerKm)
+  const raceDateISO = String(goal?.raceDateISO ?? '').trim().slice(0, 10)
+  const startDateStr = String(body?.startDate ?? '').trim().slice(0, 10)
+  const endDateStr = String(body?.endDate ?? '').trim().slice(0, 10)
+
+  if (!Number.isFinite(distanceKm) || distanceKm < 1 || distanceKm > 100) {
+    return res.status(400).json({ error: 'Invalid goal.distanceKm (1–100 km)', plan: null })
+  }
+  if (!Number.isFinite(targetPaceSecPerKm) || targetPaceSecPerKm < 120 || targetPaceSecPerKm > 720) {
+    return res.status(400).json({
+      error: 'Invalid goal.targetPaceSecPerKm (120–720 sec/km, e.g. 300 = 5:00/km)',
+      plan: null,
+    })
+  }
+  if (raceDateISO.length !== 10) {
+    return res.status(400).json({ error: 'Invalid goal.raceDateISO. Use yyyy-MM-dd.', plan: null })
+  }
+  if (startDateStr.length !== 10) {
+    return res.status(400).json({ error: 'Invalid startDate. Use yyyy-MM-dd.', plan: null })
+  }
+  if (endDateStr.length !== 10) {
+    return res.status(400).json({ error: 'Invalid endDate. Use yyyy-MM-dd.', plan: null })
+  }
+
+  try {
+    const startDate = new Date(`${startDateStr}T00:00:00.000Z`)
+    const endDate = new Date(`${endDateStr}T00:00:00.000Z`)
+    const { planId, startDateISO, endDateISO, planName: generatedPlanName, goal: generatedGoal, workouts } = generatePlan(
+      { distanceKm, targetPaceSecPerKm, raceDateISO },
+      startDate,
+      endDate,
+      body.planName?.trim() || undefined,
+    )
+
+    const planName = body.planName?.trim() || generatedPlanName || `Plan ${startDateISO}–${endDateISO}`
+
+    const workoutsWithIds: Array<typeof workouts[0] & { intervalsEventId?: number }> = []
+    for (const w of workouts) {
+      try {
+        const desc = w.stages.map((s) => `${s.label}: ${Math.round(s.durationSec / 60)}min${s.targetPaceSecPerKm ? ` @ ${Math.floor(s.targetPaceSecPerKm / 60)}:${String(s.targetPaceSecPerKm % 60).padStart(2, '0')}/km` : ''}`).join('\n')
+        const { id } = await createIntervalsEvent(intervalsApiKey, {
+          dateISO: w.dateISO,
+          name: w.title,
+          movingTimeSec: w.totalDurationSec,
+          description: desc,
+        })
+        workoutsWithIds.push({ ...w, intervalsEventId: id })
+      } catch (err) {
+        console.warn('Failed to create Intervals event for workout', w.dateISO, w.title, err)
+        workoutsWithIds.push({ ...w })
+      }
+    }
+
+    const plan = {
+      version: 1 as const,
+      id: planId,
+      generatedAtISO: new Date().toISOString(),
+      startDateISO,
+      raceDateISO,
+      endDateISO,
+      planName,
+      source: 'intervals_icu' as const,
+      goal: {
+        distanceKm: generatedGoal.distanceKm,
+        targetPaceSecPerKm: generatedGoal.targetPaceSecPerKm,
+        raceDateISO: generatedGoal.raceDateISO,
+        createdAtISO: generatedGoal.createdAtISO,
+      },
+      workouts: workoutsWithIds.sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
+    }
+    res.json({ plan })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Create program failed'
+    console.warn('Program create error', err)
+    res.status(502).json({ error: msg, plan: null })
+  }
+})
+
+app.post('/api/programs/delete-events', async (req, res) => {
+  if (!intervalsApiKey?.trim()) {
+    return res.status(503).json({
+      error: 'Intervals.icu integration not configured.',
+      ok: false,
+    })
+  }
+  const body = req.body as { eventIds?: number[] }
+  const ids = Array.isArray(body?.eventIds) ? body.eventIds.filter((x) => typeof x === 'number') : []
+  if (ids.length === 0) return res.json({ ok: true, deleted: 0 })
+
+  let deleted = 0
+  for (const id of ids) {
+    try {
+      await deleteIntervalsEvent(intervalsApiKey, id)
+      deleted++
+    } catch (err) {
+      console.warn('Failed to delete Intervals event', id, err)
+    }
+  }
+  res.json({ ok: true, deleted })
+})
 
 app.post('/api/intervals/import', async (req, res) => {
   const body = req.body as { apiKey?: string; oldest?: string; newest?: string; planName?: string }
