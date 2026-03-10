@@ -4,8 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
+const isGitHubPages = process.env.GITHUB_ACTIONS === 'true'
 export default defineConfig({
-  base: process.env.VITE_BASE_PATH || '/',
+  base: process.env.VITE_BASE_PATH || (isGitHubPages ? '/running-app/' : '/'),
   plugins: [
     react(),
     tailwindcss(),

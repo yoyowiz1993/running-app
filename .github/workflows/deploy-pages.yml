@@ -35,7 +35,7 @@ jobs:
         run: |
           cd running-goal-app
           npm ci
-          npm run build
+          VITE_BASE_PATH=/running-app/ npm run build
           cp dist/index.html dist/404.html
 
       - name: Upload artifact
