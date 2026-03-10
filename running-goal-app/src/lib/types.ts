@@ -57,6 +57,7 @@ export type TrainingPlan = {
   endDateISO?: string
   planName?: string
   source?: PlanSource
+  generatedBy?: 'ai' | 'builtin'
   goal: RunningGoal
   workouts: Workout[]
 }

@@ -106,6 +106,7 @@ app.post('/api/programs/create', async (req, res) => {
     let endDateISO: string
     let generatedGoal: { distanceKm: number; targetPaceSecPerKm: number; raceDateISO: string; createdAtISO: string }
     let workouts: Array<{ id: string; dateISO: string; title: string; type: string; plannedDistanceKm?: number; totalDurationSec: number; stages: Array<{ id: string; label: string; kind: string; durationSec: number; targetPaceSecPerKm?: number }> }>
+    let generatedBy: 'ai' | 'builtin' = 'builtin'
 
     if (aiApiKey?.trim()) {
       try {
@@ -125,6 +126,7 @@ app.post('/api/programs/create', async (req, res) => {
         endDateISO = validated.endDateISO
         generatedGoal = validated.goal
         workouts = validated.workouts
+        generatedBy = 'ai'
       } catch (aiErr) {
         const msg = aiErr instanceof Error ? aiErr.message : String(aiErr)
         const isRateLimit = msg.includes('429') || msg.includes('quota') || msg.includes('rate')
@@ -188,6 +190,7 @@ app.post('/api/programs/create', async (req, res) => {
       endDateISO,
       planName,
       source: 'intervals_icu' as const,
+      generatedBy,
       goal: {
         distanceKm: generatedGoal.distanceKm,
         targetPaceSecPerKm: generatedGoal.targetPaceSecPerKm,

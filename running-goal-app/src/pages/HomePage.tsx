@@ -266,7 +266,7 @@ export function HomePage() {
                     <div className="font-medium text-white">{p.planName ?? `Plan ${p.raceDateISO}`}</div>
                     <div className="text-xs text-white/60">
                       {p.workouts.length} workouts • {p.startDateISO} – {p.raceDateISO}
-                      {p.source === 'intervals_icu' ? ' • Intervals.icu' : ''}
+                      {p.generatedBy === 'ai' ? ' • AI' : p.generatedBy === 'builtin' ? ' • Built-in' : p.source === 'intervals_icu' ? ' • Intervals.icu' : ''}
                     </div>
                   </button>
                   <button
@@ -323,6 +323,15 @@ export function HomePage() {
                     {plan.planName ? `${plan.planName} • ` : ''}
                     {plan.workouts.length} workouts • {plan.startDateISO} – {plan.raceDateISO}
                   </div>
+                  {plan.generatedBy ? (
+                    <div className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-white/80" style={{ backgroundColor: plan.generatedBy === 'ai' ? 'rgba(34,197,94,0.15)' : 'rgba(148,163,184,0.15)' }}>
+                      {plan.generatedBy === 'ai' ? (
+                        <>AI-generated</>
+                      ) : (
+                        <>Built-in (AI unavailable)</>
+                      )}
+                    </div>
+                  ) : null}
                   {garminConnected ? (
                     <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-200">
                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Garmin connected
