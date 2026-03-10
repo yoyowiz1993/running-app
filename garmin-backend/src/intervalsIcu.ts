@@ -25,6 +25,16 @@ export type IntervalsEvent = {
   }
 }
 
+export type IntervalsWorkout = {
+  id?: number
+  name?: string
+  description?: string
+  type?: string
+  category?: string
+  moving_time?: number
+  workout_doc?: IntervalsEvent['workout_doc']
+}
+
 function parsePaceToSecPerKm(pace: { units?: string; value?: number } | undefined): number | undefined {
   if (!pace || typeof pace.value !== 'number') return undefined
   const v = pace.value
@@ -52,6 +62,7 @@ function mapStepToStage(step: StepShape | undefined, idx: number): { label: stri
 export function mapIntervalsEventToWorkout(
   evt: IntervalsEvent,
   newId: (prefix: string) => string,
+  dateISOOverride?: string,
 ): {
   id: string
   dateISO: string
@@ -60,7 +71,7 @@ export function mapIntervalsEventToWorkout(
   stages: Array<{ id: string; label: string; kind: string; durationSec: number; targetPaceSecPerKm?: number }>
   totalDurationSec: number
 } {
-  const dateStr = (evt.start_date_local ?? '').slice(0, 10)
+  const dateStr = dateISOOverride ?? (evt.start_date_local ?? '').slice(0, 10)
   const movingSec = evt.moving_time ?? evt.workout_doc?.duration ?? 0
   const steps = evt.workout_doc?.steps ?? []
 
@@ -100,6 +111,21 @@ export function mapIntervalsEventToWorkout(
   }
 }
 
+export function mapIntervalsLibraryWorkoutToWorkout(
+  item: IntervalsWorkout,
+  newId: (prefix: string) => string,
+  dateISO: string,
+) {
+  const evt: IntervalsEvent = { start_date_local: `${dateISO}T00:00:00` }
+  if (item.name !== undefined) evt.name = item.name
+  if (item.description !== undefined) evt.description = item.description
+  if (item.type !== undefined) evt.type = item.type
+  if (item.category !== undefined) evt.category = item.category
+  if (item.moving_time !== undefined) evt.moving_time = item.moving_time
+  if (item.workout_doc !== undefined) evt.workout_doc = item.workout_doc
+  return mapIntervalsEventToWorkout(evt, newId, dateISO)
+}
+
 export async function fetchIntervalsEvents(
   apiKey: string,
   oldest: string,
@@ -115,5 +141,19 @@ export async function fetchIntervalsEvents(
     throw new Error(`Intervals.icu API error ${res.status}: ${text.slice(0, 200)}`)
   }
   const data = (await res.json()) as IntervalsEvent[]
+  return Array.isArray(data) ? data : []
+}
+
+export async function fetchIntervalsWorkouts(apiKey: string): Promise<IntervalsWorkout[]> {
+  const auth = Buffer.from(`API_KEY:${apiKey}`).toString('base64')
+  const url = `${INTERVALS_BASE}/api/v1/athlete/0/workouts`
+  const res = await fetch(url, {
+    headers: { Authorization: `Basic ${auth}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Intervals.icu workouts API error ${res.status}: ${text.slice(0, 200)}`)
+  }
+  const data = (await res.json()) as IntervalsWorkout[]
   return Array.isArray(data) ? data : []
 }

@@ -3,7 +3,12 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { buildAuthUrl, exchangeCodeForToken, generatePKCE } from './garminAuth'
 import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
-import { fetchIntervalsEvents, mapIntervalsEventToWorkout } from './intervalsIcu'
+import {
+  fetchIntervalsEvents,
+  fetchIntervalsWorkouts,
+  mapIntervalsEventToWorkout,
+  mapIntervalsLibraryWorkoutToWorkout,
+} from './intervalsIcu'
 
 dotenv.config()
 
@@ -63,7 +68,38 @@ app.post('/api/intervals/import', async (req, res) => {
         (e.type ?? '').toLowerCase() === 'run' &&
         (e.category === 'WORKOUT' || e.category === 'RACE' || !e.category),
     )
-    const workouts = runEvents.map((e) => mapIntervalsEventToWorkout(e, newId))
+    let workouts = runEvents.map((e) => mapIntervalsEventToWorkout(e, newId))
+    let source: 'events' | 'workouts' = 'events'
+
+    // Fallback: import from library workouts when no calendar events found.
+    if (workouts.length === 0) {
+      const library = await fetchIntervalsWorkouts(apiKey)
+      const runLibrary = library.filter((w) => {
+        const t = (w.type ?? '').toLowerCase()
+        const c = (w.category ?? '').toLowerCase()
+        return (
+          t === 'run' ||
+          c === 'workout' ||
+          t.includes('run') ||
+          (w.name ?? '').toLowerCase().includes('run')
+        )
+      })
+      workouts = runLibrary.map((w, i) => {
+        const d = new Date(`${oldest}T00:00:00.000Z`)
+        d.setUTCDate(d.getUTCDate() + i)
+        const dateISO = d.toISOString().slice(0, 10)
+        return mapIntervalsLibraryWorkoutToWorkout(w, newId, dateISO)
+      })
+      source = 'workouts'
+    }
+
+    if (workouts.length === 0) {
+      return res.status(404).json({
+        error: 'No running workouts found in Intervals.icu for the selected range or library.',
+        plan: null,
+      })
+    }
+
     const startDate = workouts[0]?.dateISO ?? oldest
     const endDate = workouts[workouts.length - 1]?.dateISO ?? newest
     const plan = {
@@ -83,7 +119,7 @@ app.post('/api/intervals/import', async (req, res) => {
       },
       workouts: workouts.sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     }
-    res.json({ plan, eventsCount: runEvents.length })
+    res.json({ plan, eventsCount: runEvents.length, workoutsCount: workouts.length, source })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Import failed'
     console.warn('Intervals.icu import error', err)
