@@ -48,6 +48,7 @@ export function HomePage() {
   const [planEndDate, setPlanEndDate] = useState(() => goal?.raceDateISO ?? format(addDays(new Date(), 56), 'yyyy-MM-dd'))
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('intermediate')
   const [daysPerWeek, setDaysPerWeek] = useState('4')
+  const [currentPaceText, setCurrentPaceText] = useState('')
   const [currentWeeklyKm, setCurrentWeeklyKm] = useState('')
   const [longestRecentRunKm, setLongestRecentRunKm] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -115,6 +116,7 @@ export function HomePage() {
     }
 
     const dpw = Math.max(2, Math.min(7, Number(daysPerWeek) || 4))
+    const cpace = parsePaceToSecPerKm(currentPaceText)
     const cwk = Number(currentWeeklyKm)
     const lrr = Number(longestRecentRunKm)
 
@@ -128,6 +130,7 @@ export function HomePage() {
         runnerProfile: {
           fitnessLevel,
           daysPerWeek: dpw,
+          ...(cpace ? { currentPaceSecPerKm: clampPace(cpace) } : {}),
           ...(Number.isFinite(cwk) && cwk > 0 ? { currentWeeklyKm: cwk } : {}),
           ...(Number.isFinite(lrr) && lrr > 0 ? { longestRecentRunKm: lrr } : {}),
         },
@@ -250,15 +253,27 @@ export function HomePage() {
               </Select>
             </div>
 
-            <div>
-              <Label>Days per week I can train</Label>
-              <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
-                <option value="3">3 days</option>
-                <option value="4">4 days</option>
-                <option value="5">5 days</option>
-                <option value="6">6 days</option>
-                <option value="7">7 days (every day)</option>
-              </Select>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Days per week</Label>
+                <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
+                  <option value="3">3 days</option>
+                  <option value="4">4 days</option>
+                  <option value="5">5 days</option>
+                  <option value="6">6 days</option>
+                  <option value="7">7 days</option>
+                </Select>
+              </div>
+              <div>
+                <Label>Current easy pace</Label>
+                <Input
+                  inputMode="numeric"
+                  value={currentPaceText}
+                  onChange={(e) => setCurrentPaceText(e.target.value)}
+                  placeholder="e.g. 6:30"
+                />
+                <Help>Your comfortable pace now.</Help>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">

@@ -14,6 +14,7 @@ export type GoalInput = {
 export type RunnerProfile = {
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
   daysPerWeek: number
+  currentPaceSecPerKm?: number
   currentWeeklyKm?: number
   longestRecentRunKm?: number
 }
@@ -81,10 +82,16 @@ WORKOUT QUALITY:
 - Rest days: type "rest" with a single stage of kind "rest" and durationSec 0.
 
 PACING (all values in seconds per kilometer):
-- Easy/long pace: targetPace + 60 to targetPace + 90
-- Tempo pace: targetPace + 10 to targetPace + 20
-- Interval pace: targetPace - 10 to targetPace - 30
-- Race pace: exactly targetPace
+- If a current easy pace is provided, use it as the STARTING point for easy/long paces in week 1 and gradually bring paces closer to target over the plan.
+- If no current pace is provided, derive paces from the target race pace:
+  - Easy/long pace: targetPace + 60 to targetPace + 90
+  - Tempo pace: targetPace + 10 to targetPace + 20
+  - Interval pace: targetPace - 10 to targetPace - 30
+- When current pace IS provided:
+  - Easy runs in week 1: use current easy pace. Gradually reduce by 2-5 sec/km per week toward targetPace + 60.
+  - Tempo: start at current pace - 20, progress toward targetPace + 15.
+  - Intervals: start at current pace - 50, progress toward targetPace - 15.
+- Race day pace: exactly targetPace.
 
 DISTANCE GUIDELINES (adapt to race distance):
 - 5K plan: easy 4-6 km, long 6-8 km, weekly total 20-35 km
@@ -108,6 +115,9 @@ function buildUserPrompt(input: AiPlanInput): string {
   const totalWeeks = Math.round(totalDays / 7 * 10) / 10
 
   const rp = input.runnerProfile
+  const currentPaceNote = rp.currentPaceSecPerKm
+    ? `\n- Current easy pace: ${paceToReadable(rp.currentPaceSecPerKm)} (${rp.currentPaceSecPerKm} sec/km)`
+    : ''
   const weeklyKmNote = rp.currentWeeklyKm ? `\n- Current weekly mileage: ~${rp.currentWeeklyKm} km/week` : ''
   const longestRunNote = rp.longestRecentRunKm ? `\n- Longest recent run: ${rp.longestRecentRunKm} km` : ''
 
@@ -122,7 +132,7 @@ ${input.planName ? `- Plan name: ${input.planName}` : ''}
 
 RUNNER PROFILE:
 - Fitness level: ${rp.fitnessLevel}
-- Available training days per week: ${rp.daysPerWeek}${weeklyKmNote}${longestRunNote}
+- Available training days per week: ${rp.daysPerWeek}${currentPaceNote}${weeklyKmNote}${longestRunNote}
 
 IMPORTANT REQUIREMENTS:
 - Generate a workout for EVERY day from ${input.startDate} to ${input.endDate} (${totalDays} days total).
@@ -130,6 +140,7 @@ IMPORTANT REQUIREMENTS:
 - Do NOT alternate rest/run/rest/run. Cluster the rest days together.
 ${rp.fitnessLevel === 'beginner' ? '- BEGINNER: keep easy pace comfortable, shorter intervals (200-400m), focus on building base mileage gradually.' : ''}
 ${rp.fitnessLevel === 'advanced' ? '- ADVANCED: include longer intervals (800-1600m), tempo at higher intensity, consider doubles for high-volume weeks.' : ''}
+${rp.currentPaceSecPerKm ? `- The runner's current easy pace is ${paceToReadable(rp.currentPaceSecPerKm)}. Start training paces from HERE and gradually progress toward target. Do NOT start all workouts at target pace — that's too fast for where they are now.` : ''}
 ${rp.currentWeeklyKm ? `- Start week 1 volume near ${rp.currentWeeklyKm} km and build from there (max +10%/week).` : ''}
 ${rp.longestRecentRunKm ? `- The runner has recently run ${rp.longestRecentRunKm} km in one run. Scale long runs appropriately from this base.` : ''}
 - Long run should be ${input.goal.distanceKm >= 21 ? '18-32' : input.goal.distanceKm >= 10 ? '8-12' : '5-8'} km during peak weeks.

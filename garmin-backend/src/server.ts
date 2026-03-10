@@ -69,6 +69,7 @@ app.post('/api/programs/create', async (req, res) => {
     runnerProfile?: {
       fitnessLevel?: string
       daysPerWeek?: number
+      currentPaceSecPerKm?: number
       currentWeeklyKm?: number
       longestRecentRunKm?: number
     }
@@ -107,6 +108,7 @@ app.post('/api/programs/create', async (req, res) => {
       ? (rp!.fitnessLevel as typeof validLevels[number])
       : 'intermediate'
     const daysPerWeek = Math.max(2, Math.min(7, Number(rp?.daysPerWeek) || 4))
+    const currentPaceSecPerKm = Number(rp?.currentPaceSecPerKm)
     const currentWeeklyKm = Number(rp?.currentWeeklyKm)
     const longestRecentRunKm = Number(rp?.longestRecentRunKm)
 
@@ -118,6 +120,7 @@ app.post('/api/programs/create', async (req, res) => {
       runnerProfile: {
         fitnessLevel,
         daysPerWeek,
+        ...(Number.isFinite(currentPaceSecPerKm) && currentPaceSecPerKm >= 120 && currentPaceSecPerKm <= 720 ? { currentPaceSecPerKm } : {}),
         ...(Number.isFinite(currentWeeklyKm) && currentWeeklyKm > 0 ? { currentWeeklyKm } : {}),
         ...(Number.isFinite(longestRecentRunKm) && longestRecentRunKm > 0 ? { longestRecentRunKm } : {}),
       },

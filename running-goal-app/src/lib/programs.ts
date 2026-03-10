@@ -4,6 +4,7 @@ import type { TrainingPlan } from './types'
 export type RunnerProfile = {
   fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
   daysPerWeek: number
+  currentPaceSecPerKm?: number
   currentWeeklyKm?: number
   longestRecentRunKm?: number
 }
