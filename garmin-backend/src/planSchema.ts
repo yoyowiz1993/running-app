@@ -68,6 +68,17 @@ function normalizeStageKind(val: unknown): StageKind {
   return 'easy'
 }
 
+function sanitizeJsonText(raw: string): string {
+  let text = raw
+  // Strip single-line comments (// ...) that are NOT inside strings
+  text = text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (_, str) => str ?? '')
+  // Strip multi-line comments
+  text = text.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\//g, (_, str) => str ?? '')
+  // Remove trailing commas before } or ]
+  text = text.replace(/,\s*([\]}])/g, '$1')
+  return text
+}
+
 function parseAndExtractJson(raw: string): { workouts?: unknown[] } {
   let text = raw.trim()
   const jsonStart = text.indexOf('{')
@@ -75,11 +86,22 @@ function parseAndExtractJson(raw: string): { workouts?: unknown[] } {
   if (jsonStart >= 0 && jsonEnd > jsonStart) {
     text = text.slice(jsonStart, jsonEnd + 1)
   }
-  const parsed = JSON.parse(text) as { workouts?: unknown[] }
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Invalid JSON structure')
+  text = sanitizeJsonText(text)
+  try {
+    const parsed = JSON.parse(text) as { workouts?: unknown[] }
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Invalid JSON structure')
+    }
+    return parsed
+  } catch (e) {
+    // Last resort: try replacing single quotes with double quotes
+    const fixed = text.replace(/'/g, '"')
+    const parsed = JSON.parse(fixed) as { workouts?: unknown[] }
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Invalid JSON structure after repair')
+    }
+    return parsed
   }
-  return parsed
 }
 
 export function validateAndNormalize(
