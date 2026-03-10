@@ -39,7 +39,7 @@ jobs:
           cp dist/index.html dist/404.html
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@3
+        uses: actions/upload-pages-artifact@v3
         with:
           path: running-goal-app/dist
 
@@ -52,4 +52,4 @@ jobs:
     steps:
       - name: Deploy
         id: deployment
-        uses: actions/deploy-pages@4
+        uses: actions/deploy-pages@v4
