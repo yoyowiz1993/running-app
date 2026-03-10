@@ -70,13 +70,48 @@ function normalizeStageKind(val: unknown): StageKind {
 
 function sanitizeJsonText(raw: string): string {
   let text = raw
-  // Strip single-line comments (// ...) that are NOT inside strings
   text = text.replace(/("(?:[^"\\]|\\.)*")|\/\/[^\n]*/g, (_, str) => str ?? '')
-  // Strip multi-line comments
   text = text.replace(/("(?:[^"\\]|\\.)*")|\/\*[\s\S]*?\*\//g, (_, str) => str ?? '')
-  // Remove trailing commas before } or ]
   text = text.replace(/,\s*([\]}])/g, '$1')
   return text
+}
+
+/**
+ * Attempt to repair truncated JSON by closing open brackets/braces.
+ * Works backwards from the last valid token to find a recovery point.
+ */
+function repairTruncatedJson(text: string): string {
+  let trimmed = text.trimEnd()
+  // Remove any trailing partial key or value (e.g. `"someKey": "partial...`)
+  trimmed = trimmed.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"{}[\]]*$/, '')
+  // Also remove a trailing comma
+  trimmed = trimmed.replace(/,\s*$/, '')
+
+  const openBrackets: string[] = []
+  let inString = false
+  let escaped = false
+  for (const ch of trimmed) {
+    if (escaped) { escaped = false; continue }
+    if (ch === '\\' && inString) { escaped = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{' || ch === '[') openBrackets.push(ch)
+    else if (ch === '}' || ch === ']') openBrackets.pop()
+  }
+
+  let suffix = ''
+  for (let i = openBrackets.length - 1; i >= 0; i--) {
+    suffix += openBrackets[i] === '{' ? '}' : ']'
+  }
+  return trimmed + suffix
+}
+
+function tryParse(text: string): { workouts?: unknown[] } | null {
+  try {
+    const parsed = JSON.parse(text) as { workouts?: unknown[] }
+    if (parsed && typeof parsed === 'object') return parsed
+  } catch { /* ignore */ }
+  return null
 }
 
 function parseAndExtractJson(raw: string): { workouts?: unknown[] } {
@@ -87,21 +122,28 @@ function parseAndExtractJson(raw: string): { workouts?: unknown[] } {
     text = text.slice(jsonStart, jsonEnd + 1)
   }
   text = sanitizeJsonText(text)
-  try {
-    const parsed = JSON.parse(text) as { workouts?: unknown[] }
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Invalid JSON structure')
-    }
-    return parsed
-  } catch (e) {
-    // Last resort: try replacing single quotes with double quotes
-    const fixed = text.replace(/'/g, '"')
-    const parsed = JSON.parse(fixed) as { workouts?: unknown[] }
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Invalid JSON structure after repair')
-    }
-    return parsed
+
+  // 1. Try direct parse
+  const direct = tryParse(text)
+  if (direct) return direct
+
+  // 2. Try single-quote replacement
+  const singleQuoteFix = tryParse(text.replace(/'/g, '"'))
+  if (singleQuoteFix) return singleQuoteFix
+
+  // 3. Repair truncated JSON (close open brackets)
+  const repaired = repairTruncatedJson(text)
+  const repairedResult = tryParse(repaired)
+  if (repairedResult) {
+    console.warn('AI JSON was truncated – repaired by closing open brackets')
+    return repairedResult
   }
+
+  // 4. Last resort: repair with single-quote fix
+  const repairedSQ = tryParse(repaired.replace(/'/g, '"'))
+  if (repairedSQ) return repairedSQ
+
+  throw new Error('Unable to parse AI JSON output after all repair attempts')
 }
 
 export function validateAndNormalize(

@@ -103,7 +103,7 @@ export async function generatePlanFromAI(input: AiPlanInput): Promise<string> {
     contents: [{ role: 'user', parts: [{ text: buildUserPrompt(input) }] }],
     generationConfig: {
       temperature: 0.3,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 65536,
       responseMimeType: 'application/json',
     },
   }
