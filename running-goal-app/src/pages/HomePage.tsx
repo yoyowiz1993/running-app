@@ -7,7 +7,7 @@ import { Card } from '../components/Card'
 import { Help, Input, Label } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { clampPace, formatPace, parsePaceToSecPerKm } from '../lib/pace'
-import { createProgram, deleteProgramEvents } from '../lib/programs'
+import { createProgram } from '../lib/programs'
 import { computeProgress } from '../lib/progress'
 import { fetchGarminActivities } from '../lib/garmin'
 import { applyGarminMatches } from '../lib/garminMatching'
@@ -138,22 +138,13 @@ export function HomePage() {
     setPlans(loadPlans())
   }
 
-  async function onDeletePlan(p: TrainingPlan): Promise<void> {
+  function onDeletePlan(p: TrainingPlan): void {
     if (!window.confirm(`Delete "${p.planName ?? `Plan ${p.raceDateISO}`}"? This cannot be undone.`)) return
     setDeletingId(p.id)
-    try {
-      const eventIds = p.workouts
-        .map((w) => w.intervalsEventId)
-        .filter((id): id is number => typeof id === 'number')
-      if (eventIds.length > 0) {
-        await deleteProgramEvents(eventIds)
-      }
-      deletePlan(p.id)
-      setPlan(loadActivePlan())
-      setPlans(loadPlans())
-    } finally {
-      setDeletingId(null)
-    }
+    deletePlan(p.id)
+    setPlan(loadActivePlan())
+    setPlans(loadPlans())
+    setDeletingId(null)
   }
 
   return (

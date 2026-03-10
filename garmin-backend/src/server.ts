@@ -3,14 +3,6 @@ import cors from 'cors'
 import dotenv from 'dotenv'
 import { buildAuthUrl, exchangeCodeForToken, generatePKCE } from './garminAuth'
 import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
-import {
-  createIntervalsEvent,
-  deleteIntervalsEvent,
-  fetchIntervalsEvents,
-  fetchIntervalsWorkouts,
-  mapIntervalsEventToWorkout,
-  mapIntervalsLibraryWorkoutToWorkout,
-} from './intervalsIcu'
 import { generatePlanFromAI } from './aiPlanProvider'
 import { validateAndNormalize } from './planSchema'
 
@@ -60,7 +52,6 @@ app.get('/api/activities', (_req, res) => {
 const usdaApiKey = process.env.USDA_API_KEY
 const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1'
 
-const intervalsApiKey = process.env.INTERVALS_API_KEY
 const aiApiKey = process.env.AI_API_KEY
 
 app.post('/api/programs/create', async (req, res) => {
@@ -120,24 +111,6 @@ app.post('/api/programs/create', async (req, res) => {
 
     const planName = planNameInput || `Plan ${startDateISO}–${endDateISO}`
 
-    const workoutsWithIds: Array<(typeof workouts[0]) & { intervalsEventId?: number }> = intervalsApiKey?.trim()
-      ? await Promise.all(workouts.map(async (w) => {
-          try {
-            const desc = w.stages.map((s) => `${s.label}: ${Math.round(s.durationSec / 60)}min${s.targetPaceSecPerKm ? ` @ ${Math.floor(s.targetPaceSecPerKm / 60)}:${String(s.targetPaceSecPerKm % 60).padStart(2, '0')}/km` : ''}`).join('\n')
-            const { id } = await createIntervalsEvent(intervalsApiKey, {
-              dateISO: w.dateISO,
-              name: w.title,
-              movingTimeSec: w.totalDurationSec,
-              description: desc,
-            })
-            return { ...w, intervalsEventId: id }
-          } catch (err) {
-            console.warn('Failed to create Intervals event for workout', w.dateISO, w.title, err)
-            return { ...w }
-          }
-        }))
-      : workouts.map((w) => ({ ...w }))
-
     const plan = {
       version: 1 as const,
       id: planId,
@@ -146,7 +119,7 @@ app.post('/api/programs/create', async (req, res) => {
       raceDateISO,
       endDateISO,
       planName,
-      source: 'intervals_icu' as const,
+      source: 'ai' as const,
       generatedBy,
       goal: {
         distanceKm: generatedGoal.distanceKm,
@@ -154,7 +127,7 @@ app.post('/api/programs/create', async (req, res) => {
         raceDateISO: generatedGoal.raceDateISO,
         createdAtISO: generatedGoal.createdAtISO,
       },
-      workouts: workoutsWithIds.sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
+      workouts: workouts.sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     }
     res.json({ plan })
   } catch (err) {
@@ -164,105 +137,6 @@ app.post('/api/programs/create', async (req, res) => {
   }
 })
 
-app.post('/api/programs/delete-events', async (req, res) => {
-  if (!intervalsApiKey?.trim()) {
-    return res.status(503).json({
-      error: 'Intervals.icu integration not configured.',
-      ok: false,
-    })
-  }
-  const body = req.body as { eventIds?: number[] }
-  const ids = Array.isArray(body?.eventIds) ? body.eventIds.filter((x) => typeof x === 'number') : []
-  if (ids.length === 0) return res.json({ ok: true, deleted: 0 })
-
-  let deleted = 0
-  for (const id of ids) {
-    try {
-      await deleteIntervalsEvent(intervalsApiKey, id)
-      deleted++
-    } catch (err) {
-      console.warn('Failed to delete Intervals event', id, err)
-    }
-  }
-  res.json({ ok: true, deleted })
-})
-
-app.post('/api/intervals/import', async (req, res) => {
-  const body = req.body as { apiKey?: string; oldest?: string; newest?: string; planName?: string }
-  const apiKey = body?.apiKey?.trim()
-  const oldest = (body?.oldest ?? '').trim().slice(0, 10)
-  const newest = (body?.newest ?? '').trim().slice(0, 10)
-  if (!apiKey || oldest.length !== 10 || newest.length !== 10) {
-    return res.status(400).json({
-      error: 'Missing or invalid apiKey, oldest, newest. Use yyyy-MM-dd dates.',
-      plan: null,
-    })
-  }
-  try {
-    const events = await fetchIntervalsEvents(apiKey, oldest, newest)
-    const runEvents = events.filter(
-      (e) =>
-        (e.type ?? '').toLowerCase() === 'run' &&
-        (e.category === 'WORKOUT' || e.category === 'RACE' || !e.category),
-    )
-    let workouts = runEvents.map((e) => mapIntervalsEventToWorkout(e, newId))
-    let source: 'events' | 'workouts' = 'events'
-
-    // Fallback: import from library workouts when no calendar events found.
-    if (workouts.length === 0) {
-      const library = await fetchIntervalsWorkouts(apiKey)
-      const runLibrary = library.filter((w) => {
-        const t = (w.type ?? '').toLowerCase()
-        const c = (w.category ?? '').toLowerCase()
-        return (
-          t === 'run' ||
-          c === 'workout' ||
-          t.includes('run') ||
-          (w.name ?? '').toLowerCase().includes('run')
-        )
-      })
-      workouts = runLibrary.map((w, i) => {
-        const d = new Date(`${oldest}T00:00:00.000Z`)
-        d.setUTCDate(d.getUTCDate() + i)
-        const dateISO = d.toISOString().slice(0, 10)
-        return mapIntervalsLibraryWorkoutToWorkout(w, newId, dateISO)
-      })
-      source = 'workouts'
-    }
-
-    if (workouts.length === 0) {
-      return res.status(404).json({
-        error: 'No running workouts found in Intervals.icu for the selected range or library.',
-        plan: null,
-      })
-    }
-
-    const startDate = workouts[0]?.dateISO ?? oldest
-    const endDate = workouts[workouts.length - 1]?.dateISO ?? newest
-    const plan = {
-      version: 1,
-      id: newId('plan'),
-      generatedAtISO: new Date().toISOString(),
-      startDateISO: startDate,
-      raceDateISO: endDate,
-      endDateISO: endDate,
-      planName: body.planName?.trim() || `Intervals.icu ${oldest}–${newest}`,
-      source: 'intervals_icu',
-      goal: {
-        distanceKm: 10,
-        targetPaceSecPerKm: 300,
-        raceDateISO: endDate,
-        createdAtISO: new Date().toISOString(),
-      },
-      workouts: workouts.sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
-    }
-    res.json({ plan, eventsCount: runEvents.length, workoutsCount: workouts.length, source })
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : 'Import failed'
-    console.warn('Intervals.icu import error', err)
-    res.status(502).json({ error: msg, plan: null })
-  }
-})
 
 app.get('/api/nutrition/search', async (req, res) => {
   const q = (req.query.q as string)?.trim()

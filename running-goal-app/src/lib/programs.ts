@@ -30,14 +30,3 @@ export async function createProgram(input: CreateProgramInput): Promise<{ plan: 
   return { plan: data.plan }
 }
 
-export async function deleteProgramEvents(eventIds: number[]): Promise<void> {
-  if (eventIds.length === 0) return
-  const base = await getApiBase()
-  await fetch(`${base}/api/programs/delete-events`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eventIds }),
-    credentials: 'omit',
-    mode: 'cors',
-  })
-}
