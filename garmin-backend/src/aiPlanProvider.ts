@@ -92,7 +92,7 @@ Ensure totalDurationSec equals sum of stages' durationSec. Generate the complete
 
 export async function generatePlanFromAI(input: AiPlanInput): Promise<string> {
   const apiKey = process.env.AI_API_KEY?.trim()
-  const model = process.env.AI_MODEL || 'gemini-1.5-flash'
+  const model = process.env.AI_MODEL || 'gemini-2.0-flash'
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
