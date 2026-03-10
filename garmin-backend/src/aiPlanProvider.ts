@@ -11,11 +11,19 @@ export type GoalInput = {
   raceDateISO: string
 }
 
+export type RunnerProfile = {
+  fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
+  daysPerWeek: number
+  currentWeeklyKm?: number
+  longestRecentRunKm?: number
+}
+
 export type AiPlanInput = {
   goal: GoalInput
   startDate: string
   endDate: string
   planName?: string
+  runnerProfile: RunnerProfile
 }
 
 export type AiRawWorkout = {
@@ -46,10 +54,11 @@ const SYSTEM_PROMPT = `You are an elite running coach building a training plan. 
 
 ## Plan structure rules
 
-WEEKLY TEMPLATE (adapt to available days):
-- 4–6 running days per week. Max 2 rest days per week, NEVER alternate run/rest/run/rest.
-- Group rest days (e.g. Monday + Friday off, or just 1 day off).
-- Weekly pattern example: Mon=easy, Tue=intervals/tempo, Wed=easy, Thu=rest, Fri=tempo/intervals, Sat=long, Sun=rest.
+WEEKLY TEMPLATE (adapt to the runner's available training days per week):
+- Schedule exactly the number of running days the runner specifies. Remaining days are rest.
+- NEVER alternate run/rest/run/rest. Group rest days together.
+- Space hard sessions (tempo, intervals) at least 1-2 days apart with easy runs or rest between.
+- Weekly pattern example for 4 days: Mon=easy, Wed=tempo, Fri=intervals, Sat=long, rest on Tue/Thu/Sun.
 
 PERIODIZATION:
 - Weeks 1–3: build phase — increase weekly volume ~8-10% per week.
@@ -98,6 +107,10 @@ function buildUserPrompt(input: AiPlanInput): string {
   const totalDays = Math.round((endD.getTime() - startD.getTime()) / 86400000) + 1
   const totalWeeks = Math.round(totalDays / 7 * 10) / 10
 
+  const rp = input.runnerProfile
+  const weeklyKmNote = rp.currentWeeklyKm ? `\n- Current weekly mileage: ~${rp.currentWeeklyKm} km/week` : ''
+  const longestRunNote = rp.longestRecentRunKm ? `\n- Longest recent run: ${rp.longestRecentRunKm} km` : ''
+
   return `Create a running training plan:
 - Race distance: ${input.goal.distanceKm} km
 - Target race pace: ${pace} (${input.goal.targetPaceSecPerKm} sec/km)
@@ -107,10 +120,18 @@ function buildUserPrompt(input: AiPlanInput): string {
 - Duration: ${totalDays} days (~${totalWeeks} weeks)
 ${input.planName ? `- Plan name: ${input.planName}` : ''}
 
+RUNNER PROFILE:
+- Fitness level: ${rp.fitnessLevel}
+- Available training days per week: ${rp.daysPerWeek}${weeklyKmNote}${longestRunNote}
+
 IMPORTANT REQUIREMENTS:
 - Generate a workout for EVERY day from ${input.startDate} to ${input.endDate} (${totalDays} days total).
-- Include 4-6 running days per week. Max 1-2 rest days per week.
-- Do NOT alternate rest/run/rest/run. Cluster the rest days.
+- Schedule exactly ${rp.daysPerWeek} running days per week. The remaining ${7 - rp.daysPerWeek} days should be rest days.
+- Do NOT alternate rest/run/rest/run. Cluster the rest days together.
+${rp.fitnessLevel === 'beginner' ? '- BEGINNER: keep easy pace comfortable, shorter intervals (200-400m), focus on building base mileage gradually.' : ''}
+${rp.fitnessLevel === 'advanced' ? '- ADVANCED: include longer intervals (800-1600m), tempo at higher intensity, consider doubles for high-volume weeks.' : ''}
+${rp.currentWeeklyKm ? `- Start week 1 volume near ${rp.currentWeeklyKm} km and build from there (max +10%/week).` : ''}
+${rp.longestRecentRunKm ? `- The runner has recently run ${rp.longestRecentRunKm} km in one run. Scale long runs appropriately from this base.` : ''}
 - Long run should be ${input.goal.distanceKm >= 21 ? '18-32' : input.goal.distanceKm >= 10 ? '8-12' : '5-8'} km during peak weeks.
 - Easy runs should be at least ${input.goal.distanceKm >= 21 ? '8' : input.goal.distanceKm >= 10 ? '5' : '4'} km.
 ${totalDays <= 21 ? '- SHORT PLAN: maintain high volume for the first 60-70% of days, only taper the final 5-7 days.' : ''}

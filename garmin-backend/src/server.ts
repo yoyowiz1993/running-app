@@ -66,6 +66,12 @@ app.post('/api/programs/create', async (req, res) => {
     planName?: string
     startDate?: string
     endDate?: string
+    runnerProfile?: {
+      fitnessLevel?: string
+      daysPerWeek?: number
+      currentWeeklyKm?: number
+      longestRecentRunKm?: number
+    }
   }
   const goal = body?.goal
   const distanceKm = Number(goal?.distanceKm)
@@ -95,11 +101,26 @@ app.post('/api/programs/create', async (req, res) => {
 
   try {
     const planNameInput = body.planName?.trim()
+    const rp = body.runnerProfile
+    const validLevels = ['beginner', 'intermediate', 'advanced'] as const
+    const fitnessLevel = validLevels.includes(rp?.fitnessLevel as typeof validLevels[number])
+      ? (rp!.fitnessLevel as typeof validLevels[number])
+      : 'intermediate'
+    const daysPerWeek = Math.max(2, Math.min(7, Number(rp?.daysPerWeek) || 4))
+    const currentWeeklyKm = Number(rp?.currentWeeklyKm)
+    const longestRecentRunKm = Number(rp?.longestRecentRunKm)
+
     const rawJson = await generatePlanFromAI({
       goal: { distanceKm, targetPaceSecPerKm, raceDateISO },
       startDate: startDateStr,
       endDate: endDateStr,
       ...(planNameInput ? { planName: planNameInput } : {}),
+      runnerProfile: {
+        fitnessLevel,
+        daysPerWeek,
+        ...(Number.isFinite(currentWeeklyKm) && currentWeeklyKm > 0 ? { currentWeeklyKm } : {}),
+        ...(Number.isFinite(longestRecentRunKm) && longestRecentRunKm > 0 ? { longestRecentRunKm } : {}),
+      },
     })
     const validated = validateAndNormalize(rawJson, startDateStr, endDateStr, {
       distanceKm,

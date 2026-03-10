@@ -1,10 +1,10 @@
 import { addDays, format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
-import { CalendarDays, ChevronRight, Flag, Gauge, Link2, List, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { Activity, CalendarDays, ChevronRight, Flag, Gauge, Link2, List, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
-import { Help, Input, Label } from '../components/Field'
+import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { clampPace, formatPace, parsePaceToSecPerKm } from '../lib/pace'
 import { createProgram } from '../lib/programs'
@@ -46,6 +46,10 @@ export function HomePage() {
   const [planName, setPlanName] = useState(() => `Plan ${format(addDays(new Date(), 56), 'yyyy-MM-dd')}`)
   const [planStartDate, setPlanStartDate] = useState(() => format(startOfDay(new Date()), 'yyyy-MM-dd'))
   const [planEndDate, setPlanEndDate] = useState(() => goal?.raceDateISO ?? format(addDays(new Date(), 56), 'yyyy-MM-dd'))
+  const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('intermediate')
+  const [daysPerWeek, setDaysPerWeek] = useState('4')
+  const [currentWeeklyKm, setCurrentWeeklyKm] = useState('')
+  const [longestRecentRunKm, setLongestRecentRunKm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [garminConnected] = useState(() => localStorage.getItem('runningPlan.garmin.connected') === 'true')
   const [creating, setCreating] = useState(false)
@@ -110,6 +114,10 @@ export function HomePage() {
       return
     }
 
+    const dpw = Math.max(2, Math.min(7, Number(daysPerWeek) || 4))
+    const cwk = Number(currentWeeklyKm)
+    const lrr = Number(longestRecentRunKm)
+
     setCreating(true)
     try {
       const { plan: newPlan } = await createProgram({
@@ -117,6 +125,12 @@ export function HomePage() {
         planName: planName.trim() || undefined,
         startDate: planStartDate,
         endDate: planEndDate,
+        runnerProfile: {
+          fitnessLevel,
+          daysPerWeek: dpw,
+          ...(Number.isFinite(cwk) && cwk > 0 ? { currentWeeklyKm: cwk } : {}),
+          ...(Number.isFinite(lrr) && lrr > 0 ? { longestRecentRunKm: lrr } : {}),
+        },
       })
       savePlan(newPlan)
       setPlan(newPlan)
@@ -214,6 +228,59 @@ export function HomePage() {
               <div>
                 <Label>Plan end</Label>
                 <Input type="date" value={planEndDate} onChange={(e) => setPlanEndDate(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="mt-1 border-t border-white/10 pt-3">
+              <div className="flex items-center gap-2 text-white/80">
+                <Activity className="h-4 w-4 text-emerald-300" />
+                <span className="text-sm font-medium">Runner profile</span>
+              </div>
+            </div>
+
+            <div>
+              <Label>Fitness level</Label>
+              <Select
+                value={fitnessLevel}
+                onChange={(e) => setFitnessLevel(e.target.value as 'beginner' | 'intermediate' | 'advanced')}
+              >
+                <option value="beginner">Beginner (new to running / &lt; 6 months)</option>
+                <option value="intermediate">Intermediate (6 months – 2 years)</option>
+                <option value="advanced">Advanced (2+ years, regular racing)</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Days per week I can train</Label>
+              <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
+                <option value="3">3 days</option>
+                <option value="4">4 days</option>
+                <option value="5">5 days</option>
+                <option value="6">6 days</option>
+                <option value="7">7 days (every day)</option>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Current weekly km</Label>
+                <Input
+                  inputMode="decimal"
+                  value={currentWeeklyKm}
+                  onChange={(e) => setCurrentWeeklyKm(e.target.value)}
+                  placeholder="e.g. 20"
+                />
+                <Help>Optional – your recent average.</Help>
+              </div>
+              <div>
+                <Label>Longest recent run (km)</Label>
+                <Input
+                  inputMode="decimal"
+                  value={longestRecentRunKm}
+                  onChange={(e) => setLongestRecentRunKm(e.target.value)}
+                  placeholder="e.g. 8"
+                />
+                <Help>Optional – in the last 2-4 weeks.</Help>
               </div>
             </div>
 

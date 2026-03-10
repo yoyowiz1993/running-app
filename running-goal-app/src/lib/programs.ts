@@ -1,11 +1,19 @@
 import { getApiBase } from './garmin'
 import type { TrainingPlan } from './types'
 
+export type RunnerProfile = {
+  fitnessLevel: 'beginner' | 'intermediate' | 'advanced'
+  daysPerWeek: number
+  currentWeeklyKm?: number
+  longestRecentRunKm?: number
+}
+
 export type CreateProgramInput = {
   goal: { distanceKm: number; targetPaceSecPerKm: number; raceDateISO: string }
   planName?: string
   startDate: string
   endDate: string
+  runnerProfile: RunnerProfile
 }
 
 export async function createProgram(input: CreateProgramInput): Promise<{ plan: TrainingPlan }> {
@@ -18,6 +26,7 @@ export async function createProgram(input: CreateProgramInput): Promise<{ plan: 
       planName: input.planName?.trim() || undefined,
       startDate: input.startDate,
       endDate: input.endDate,
+      runnerProfile: input.runnerProfile,
     }),
     credentials: 'omit',
     mode: 'cors',
