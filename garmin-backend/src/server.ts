@@ -11,7 +11,8 @@ import {
   mapIntervalsEventToWorkout,
   mapIntervalsLibraryWorkoutToWorkout,
 } from './intervalsIcu'
-import { generatePlan } from './planGenerator'
+import { generatePlanFromAI } from './aiPlanProvider'
+import { validateAndNormalize } from './planSchema'
 
 dotenv.config()
 
@@ -54,11 +55,12 @@ const usdaApiKey = process.env.USDA_API_KEY
 const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1'
 
 const intervalsApiKey = process.env.INTERVALS_API_KEY
+const aiApiKey = process.env.AI_API_KEY
 
 app.post('/api/programs/create', async (req, res) => {
-  if (!intervalsApiKey?.trim()) {
+  if (!aiApiKey?.trim()) {
     return res.status(503).json({
-      error: 'Intervals.icu integration not configured. Set INTERVALS_API_KEY in the backend environment.',
+      error: 'AI program generation not configured. Set AI_API_KEY in the backend environment.',
       plan: null,
     })
   }
@@ -95,20 +97,27 @@ app.post('/api/programs/create', async (req, res) => {
   }
 
   try {
-    const startDate = new Date(`${startDateStr}T00:00:00.000Z`)
-    const endDate = new Date(`${endDateStr}T00:00:00.000Z`)
-    const { planId, startDateISO, endDateISO, planName: generatedPlanName, goal: generatedGoal, workouts } = generatePlan(
-      { distanceKm, targetPaceSecPerKm, raceDateISO },
-      startDate,
-      endDate,
-      body.planName?.trim() || undefined,
-    )
+    const planNameInput = body.planName?.trim()
+    const rawJson = await generatePlanFromAI({
+      goal: { distanceKm, targetPaceSecPerKm, raceDateISO },
+      startDate: startDateStr,
+      endDate: endDateStr,
+      ...(planNameInput ? { planName: planNameInput } : {}),
+    })
 
-    const planName = body.planName?.trim() || generatedPlanName || `Plan ${startDateISO}–${endDateISO}`
+    const validated = validateAndNormalize(rawJson, startDateStr, endDateStr, {
+      distanceKm,
+      targetPaceSecPerKm,
+      raceDateISO,
+    })
 
-    const workoutsWithIds: Array<typeof workouts[0] & { intervalsEventId?: number }> = []
+    const planName = body.planName?.trim() || `Plan ${validated.startDateISO}–${validated.endDateISO}`
+    const { planId, startDateISO, endDateISO, goal: generatedGoal, workouts } = validated
+
+    const workoutsWithIds: Array<(typeof workouts[0]) & { intervalsEventId?: number }> = []
     for (const w of workouts) {
       try {
+        if (!intervalsApiKey?.trim()) continue
         const desc = w.stages.map((s) => `${s.label}: ${Math.round(s.durationSec / 60)}min${s.targetPaceSecPerKm ? ` @ ${Math.floor(s.targetPaceSecPerKm / 60)}:${String(s.targetPaceSecPerKm % 60).padStart(2, '0')}/km` : ''}`).join('\n')
         const { id } = await createIntervalsEvent(intervalsApiKey, {
           dateISO: w.dateISO,
