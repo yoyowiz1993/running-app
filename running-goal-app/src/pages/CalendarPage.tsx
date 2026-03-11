@@ -1,5 +1,5 @@
 import { addDays, format, getDaysInMonth, isValid, parseISO, startOfMonth } from 'date-fns'
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Grid3X3, List, Play, UploadCloud } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Grid3X3, List, Play, RefreshCw, UploadCloud } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -7,6 +7,7 @@ import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
+import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
 import { formatPaceWithSpeed } from '../lib/pace'
 import {
   loadActivePlan,
@@ -16,6 +17,7 @@ import {
   updateWorkout,
   updateWorkouts,
 } from '../lib/storage'
+import { supabase } from '../lib/supabase'
 import type { TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
 
@@ -108,6 +110,8 @@ export function CalendarPage() {
   const [plans, setPlans] = useState<TrainingPlan[]>(() => loadPlans())
   const [syncingWorkoutId, setSyncingWorkoutId] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
+  const [syncingStrava, setSyncingStrava] = useState(false)
+  const [stravaMessage, setStravaMessage] = useState<string>('')
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid')
 
   const today = new Date()
@@ -180,6 +184,32 @@ export function CalendarPage() {
     setSyncingAll(false)
   }
 
+  async function syncFromStrava(): Promise<void> {
+    if (!plan) return
+    setSyncingStrava(true)
+    setStravaMessage('')
+    try {
+      const { data } = await supabase!.auth.getUser()
+      const userId = data.user?.id
+      if (!userId) throw new Error('Not signed in')
+      const activities = await fetchStravaActivities(userId)
+      const matches = matchActivitiesToWorkouts(plan.workouts, activities)
+      if (matches.size === 0) {
+        setStravaMessage('No matching Strava activities found for this plan.')
+        setSyncingStrava(false)
+        return
+      }
+      const updatedWorkouts = applyStravaMatchesToWorkouts(plan.workouts, matches)
+      const nextPlan = updateWorkouts(plan, updatedWorkouts)
+      savePlan(nextPlan)
+      setPlan(nextPlan)
+      setStravaMessage(`Synced ${matches.size} workout${matches.size !== 1 ? 's' : ''} from Strava.`)
+    } catch (err) {
+      setStravaMessage(err instanceof Error ? err.message : 'Strava sync failed')
+    }
+    setSyncingStrava(false)
+  }
+
   return (
     <div className="min-h-full bg-gradient-to-b from-[#070b14] via-[#070b14] to-[#041a14]">
       <TopBar title="Calendar" />
@@ -236,13 +266,27 @@ export function CalendarPage() {
                       <List className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <Button variant="secondary" size="md" onClick={() => void syncAll()} disabled={syncingAll}>
+                  <Button variant="secondary" size="md" onClick={() => void syncFromStrava()} disabled={syncingStrava || syncingAll}>
+                    <RefreshCw className={`h-4 w-4 ${syncingStrava ? 'animate-spin' : ''}`} />
+                    {syncingStrava ? 'Syncing...' : 'Strava'}
+                  </Button>
+                  <Button variant="secondary" size="md" onClick={() => void syncAll()} disabled={syncingAll || syncingStrava}>
                     <UploadCloud className="h-4 w-4" />
-                    {syncingAll ? 'Syncing...' : 'Sync'}
+                    {syncingAll ? 'Syncing...' : 'Garmin'}
                   </Button>
                 </div>
               </div>
             </Card>
+
+            {stravaMessage ? (
+              <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${
+                stravaMessage.includes('No matching') || stravaMessage.includes('failed') || stravaMessage.includes('Not signed')
+                  ? 'border border-amber-500/20 bg-amber-500/10 text-amber-200'
+                  : 'border border-emerald-500/20 bg-emerald-500/10 text-emerald-200'
+              }`}>
+                {stravaMessage}
+              </div>
+            ) : null}
 
             {viewMode === 'grid' ? (
               /* ── Grid view ── */
@@ -397,6 +441,11 @@ export function CalendarPage() {
                                   }`}
                                 >
                                   Garmin {w.garminSyncStatus}
+                                </span>
+                              ) : null}
+                              {w.stravaSyncStatus === 'synced' ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-200">
+                                  Strava ✓
                                 </span>
                               ) : null}
                             </div>

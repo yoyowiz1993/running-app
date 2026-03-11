@@ -9,6 +9,7 @@ import { signOut } from '../lib/auth'
 import { clearAllData, loadActivePlan, loadPlans } from '../lib/storage'
 import { computeStreak } from '../lib/stats'
 import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
+import { getStravaAuthUrl, fetchStravaConnectionStatus } from '../lib/strava'
 import { supabase } from '../lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
@@ -52,11 +53,22 @@ export function SettingsPage() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [cleared, setCleared] = useState(false)
   const [garminStatus, setGarminStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown')
+  const [stravaStatus, setStravaStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown')
+  const [stravaAthleteName, setStravaAthleteName] = useState<string>('')
   const [backendUrl, setBackendUrl] = useState<string>('')
   const [signingOut, setSigningOut] = useState(false)
 
   useEffect(() => {
-    void supabase?.auth.getUser().then(({ data }) => setUser(data.user ?? null))
+    void supabase?.auth.getUser().then(({ data }) => {
+      const u = data.user ?? null
+      setUser(u)
+      if (u?.id) {
+        void fetchStravaConnectionStatus(u.id).then(({ connected, athleteName }) => {
+          setStravaStatus(connected ? 'connected' : 'disconnected')
+          if (athleteName) setStravaAthleteName(athleteName)
+        })
+      }
+    })
     const flag = localStorage.getItem('runningPlan.garmin.connected')
     setGarminStatus(flag === 'true' ? 'connected' : 'disconnected')
     getApiBase().then(setBackendUrl)
@@ -67,11 +79,18 @@ export function SettingsPage() {
     const q = hash.includes('?') ? hash.slice(hash.indexOf('?')) : window.location.search
     const params = new URLSearchParams(q)
     const garmin = params.get('garmin')
+    const strava = params.get('strava')
     if (garmin === 'connected') {
       localStorage.setItem('runningPlan.garmin.connected', 'true')
       setGarminStatus('connected')
       window.history.replaceState(null, '', window.location.pathname + '#/settings')
     } else if (garmin === 'error') {
+      window.history.replaceState(null, '', window.location.pathname + '#/settings')
+    }
+    if (strava === 'connected') {
+      setStravaStatus('connected')
+      window.history.replaceState(null, '', window.location.pathname + '#/settings')
+    } else if (strava === 'error') {
       window.history.replaceState(null, '', window.location.pathname + '#/settings')
     }
   }, [])
@@ -202,6 +221,48 @@ export function SettingsPage() {
                 Backend is running locally. Set VITE_API_BASE_URL to your deployed Render URL.
               </div>
             ) : null}
+          </Card>
+        </motion.div>
+
+        {/* ── Strava ── */}
+        <motion.div variants={fadeUp}>
+          <Card className="p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">
+              Strava
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div
+                  className={`h-2 w-2 rounded-full ${
+                    stravaStatus === 'connected' ? 'bg-orange-400' : 'bg-white/20'
+                  }`}
+                />
+                <div>
+                  <span className={`text-sm ${stravaStatus === 'connected' ? 'text-orange-300' : 'text-white/50'}`}>
+                    {stravaStatus === 'connected'
+                      ? stravaAthleteName
+                        ? `Connected as ${stravaAthleteName}`
+                        : 'Connected'
+                      : stravaStatus === 'unknown'
+                        ? 'Checking…'
+                        : 'Not connected'}
+                  </span>
+                  {stravaStatus !== 'connected' && (
+                    <p className="text-[11px] text-white/30 mt-0.5">Sync your runs automatically</p>
+                  )}
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  if (!user?.id) return
+                  void getStravaAuthUrl(user.id).then((url) => { window.location.href = url })
+                }}
+              >
+                <Link2 className="h-4 w-4" />
+                {stravaStatus === 'connected' ? 'Reconnect' : 'Connect'}
+              </Button>
+            </div>
           </Card>
         </motion.div>
 

@@ -6,6 +6,12 @@ import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
 import { generatePlanFromAI } from './aiPlanProvider'
 import { generateMealSuggestions } from './aiMealProvider'
 import { validateAndNormalize } from './planSchema'
+import {
+  buildStravaAuthUrl,
+  exchangeStravaCode,
+  fetchStravaActivities,
+  getStravaConnectionStatus,
+} from './stravaProvider'
 
 dotenv.config()
 
@@ -335,6 +341,71 @@ app.get('/auth/garmin/callback', async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'token_exchange_failed'
     return res.redirect(302, redirectToFrontend + 'error&message=' + encodeURIComponent(message))
+  }
+})
+
+// ── Strava OAuth ────────────────────────────────────────────────────────────
+
+app.get('/auth/strava/start', (req, res) => {
+  const userId = (req.query.user_id as string | undefined)?.trim()
+  if (!userId) {
+    return res.status(400).json({ ok: false, message: 'user_id query param required' })
+  }
+  if (!process.env.STRAVA_CLIENT_ID || !process.env.STRAVA_CLIENT_SECRET) {
+    return res.status(501).json({ ok: false, message: 'Strava credentials not configured on backend' })
+  }
+  try {
+    const url = buildStravaAuthUrl(userId)
+    res.redirect(302, url)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    res.status(500).json({ ok: false, message: msg })
+  }
+})
+
+app.get('/auth/strava/callback', async (req, res) => {
+  const { code, state: userId, error } = req.query as {
+    code?: string
+    state?: string
+    error?: string
+  }
+  const redirectToFrontend = frontendUrl ? `${frontendUrl}#/settings?strava=` : '#/settings?strava='
+
+  if (error || !code || !userId) {
+    return res.redirect(302, redirectToFrontend + 'error&message=' + encodeURIComponent(error ?? 'missing_code'))
+  }
+
+  try {
+    await exchangeStravaCode(code, userId)
+    return res.redirect(302, redirectToFrontend + 'connected')
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'token_exchange_failed'
+    return res.redirect(302, redirectToFrontend + 'error&message=' + encodeURIComponent(msg))
+  }
+})
+
+// ── Strava activity routes ───────────────────────────────────────────────────
+
+app.get('/api/strava/status', async (req, res) => {
+  const userId = (req.query.user_id as string | undefined)?.trim()
+  if (!userId) return res.status(400).json({ ok: false, message: 'user_id required' })
+  try {
+    const status = await getStravaConnectionStatus(userId)
+    res.json({ ok: true, ...status })
+  } catch (err) {
+    res.status(502).json({ ok: false, message: err instanceof Error ? err.message : 'Failed' })
+  }
+})
+
+app.get('/api/strava/activities', async (req, res) => {
+  const userId = (req.query.user_id as string | undefined)?.trim()
+  if (!userId) return res.status(400).json({ ok: false, message: 'user_id required' })
+  try {
+    const activities = await fetchStravaActivities(userId)
+    res.json({ ok: true, activities })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to fetch activities'
+    res.status(502).json({ ok: false, message: msg, activities: [] })
   }
 })
 

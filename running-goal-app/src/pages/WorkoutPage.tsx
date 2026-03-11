@@ -1,6 +1,6 @@
 import confetti from 'canvas-confetti'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Pause, Play, SkipBack, SkipForward, SquareCheck, UploadCloud } from 'lucide-react'
+import { ArrowLeft, Pause, Play, RefreshCw, SkipBack, SkipForward, SquareCheck, UploadCloud } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -8,8 +8,10 @@ import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
+import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
 import { formatPaceWithSpeed } from '../lib/pace'
 import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
+import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
 import { useWorkoutPlayer } from '../lib/useWorkoutPlayer'
 import type { TrainingPlan, Workout, WorkoutType } from '../lib/types'
@@ -141,6 +143,8 @@ export function WorkoutPage() {
 
   const player = useWorkoutPlayer(workout)
   const [syncing, setSyncing] = useState(false)
+  const [syncingStrava, setSyncingStrava] = useState(false)
+  const [stravaError, setStravaError] = useState<string>('')
   const completed = Boolean(workout?.completedAtISO)
   const accent = getWorkoutAccent(workout?.type ?? 'easy')
 
@@ -161,6 +165,31 @@ export function WorkoutPage() {
     savePlan(nextPlan)
     setPlan(nextPlan)
     setSyncing(false)
+  }
+
+  async function syncFromStrava(): Promise<void> {
+    if (!plan || !workout || workout.type === 'rest') return
+    setSyncingStrava(true)
+    setStravaError('')
+    try {
+      const { data } = await supabase!.auth.getUser()
+      const userId = data.user?.id
+      if (!userId) throw new Error('Not signed in')
+      const activities = await fetchStravaActivities(userId)
+      const matches = matchActivitiesToWorkouts([workout], activities)
+      if (matches.size === 0) {
+        setStravaError('No matching Strava activity found for this workout date/distance.')
+        setSyncingStrava(false)
+        return
+      }
+      const [updatedWorkout] = applyStravaMatchesToWorkouts([workout], matches)
+      const nextPlan = updateWorkout(plan, updatedWorkout)
+      savePlan(nextPlan)
+      setPlan(nextPlan)
+    } catch (err) {
+      setStravaError(err instanceof Error ? err.message : 'Strava sync failed')
+    }
+    setSyncingStrava(false)
   }
 
   useEffect(() => {
@@ -331,7 +360,7 @@ export function WorkoutPage() {
             </div>
 
             {/* Secondary actions */}
-            <div className="flex gap-2 w-full">
+            <div className="flex gap-2 w-full flex-wrap">
               {!completed ? (
                 <Button variant="ghost" className="flex-1" onClick={markComplete}>
                   <SquareCheck className="h-4 w-4" /> Mark complete
@@ -341,14 +370,30 @@ export function WorkoutPage() {
                 <Button
                   variant="secondary"
                   className="flex-1"
+                  onClick={() => void syncFromStrava()}
+                  disabled={syncingStrava || syncing}
+                >
+                  <RefreshCw className={`h-4 w-4 ${syncingStrava ? 'animate-spin' : ''}`} />
+                  {syncingStrava ? 'Syncing...' : workout.stravaSyncStatus === 'synced' ? 'Re-sync Strava' : 'Sync Strava'}
+                </Button>
+              ) : null}
+              {workout.type !== 'rest' ? (
+                <Button
+                  variant="secondary"
+                  className="flex-1"
                   onClick={() => void syncWorkout()}
-                  disabled={syncing}
+                  disabled={syncing || syncingStrava}
                 >
                   <UploadCloud className="h-4 w-4" />
-                  {syncing ? 'Syncing...' : 'Send to Garmin'}
+                  {syncing ? 'Syncing...' : 'Garmin'}
                 </Button>
               ) : null}
             </div>
+            {stravaError ? (
+              <div className="w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {stravaError}
+              </div>
+            ) : null}
           </div>
         </Card>
 
@@ -387,6 +432,36 @@ export function WorkoutPage() {
             ) : null}
           </div>
         </Card>
+
+        {/* ── Strava stats ── */}
+        {workout.stravaSyncStatus === 'synced' && workout.stravaDistanceKm != null ? (
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold text-orange-300">Strava Activity</div>
+              {workout.stravaActivityName ? (
+                <div className="text-xs text-white/40 truncate max-w-[55%]">{workout.stravaActivityName}</div>
+              ) : null}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {[
+                { label: 'Distance', value: `${workout.stravaDistanceKm!.toFixed(2)} km` },
+                { label: 'Moving time', value: formatDurationShort(workout.stravaMovingSec ?? 0) },
+                { label: 'Elapsed time', value: formatDurationShort(workout.stravaElapsedSec ?? 0) },
+                ...(workout.stravaAvgPaceSecPerKm ? [{ label: 'Avg pace', value: formatPaceWithSpeed(workout.stravaAvgPaceSecPerKm) }] : []),
+                ...(workout.stravaAvgSpeedKph ? [{ label: 'Avg speed', value: `${workout.stravaAvgSpeedKph.toFixed(1)} km/h` }] : []),
+                ...(workout.stravaElevationGainM != null ? [{ label: 'Elevation', value: `${workout.stravaElevationGainM} m` }] : []),
+                ...(workout.stravaAvgHeartRate ? [{ label: 'Avg HR', value: `${workout.stravaAvgHeartRate} bpm` }] : []),
+                ...(workout.stravaMaxHeartRate ? [{ label: 'Max HR', value: `${workout.stravaMaxHeartRate} bpm` }] : []),
+                ...(workout.stravaCalories ? [{ label: 'Calories', value: `${workout.stravaCalories} kcal` }] : []),
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-white/8 bg-white/4 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wider text-white/40">{label}</div>
+                  <div className="mt-0.5 text-sm font-semibold text-white">{value}</div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ) : null}
 
         {/* ── Stages list ── */}
         <Card className="p-4">

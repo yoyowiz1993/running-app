@@ -35,6 +35,7 @@ export type Workout = {
   stages: WorkoutStage[]
   totalDurationSec: number
   completedAtISO?: string
+  // Garmin fields
   garminActivityId?: string
   garminDistanceKm?: number
   garminDurationSec?: number
@@ -43,6 +44,20 @@ export type Workout = {
   garminWorkoutId?: string
   garminSyncMessage?: string
   garminLastSyncedAtISO?: string
+  // Strava fields
+  stravaActivityId?: number
+  stravaActivityName?: string
+  stravaDistanceKm?: number
+  stravaMovingSec?: number
+  stravaElapsedSec?: number
+  stravaAvgPaceSecPerKm?: number
+  stravaAvgSpeedKph?: number
+  stravaElevationGainM?: number
+  stravaAvgHeartRate?: number
+  stravaMaxHeartRate?: number
+  stravaCalories?: number
+  stravaSyncStatus?: 'synced' | 'failed'
+  stravaSyncedAtISO?: string
 }
 
 export type PlanSource = 'local' | 'intervals_icu'
