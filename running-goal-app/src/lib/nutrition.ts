@@ -137,6 +137,19 @@ export type SuggestedMeal = {
   ingredients: Array<{ item: string; amount: string }>
 }
 
+const SUGGESTIONS_SESSION_KEY = 'nutrition.suggestions.session'
+
+export function loadSuggestionsFromSession(): SuggestedMeal[] {
+  try {
+    const raw = sessionStorage.getItem(SUGGESTIONS_SESSION_KEY)
+    return raw ? (JSON.parse(raw) as SuggestedMeal[]) : []
+  } catch { return [] }
+}
+
+export function saveSuggestionsToSession(meals: SuggestedMeal[]): void {
+  sessionStorage.setItem(SUGGESTIONS_SESSION_KEY, JSON.stringify(meals))
+}
+
 export async function suggestMeals(input: {
   goals: NutritionGoals
   alreadyConsumed: { calories: number; protein: number; carbs: number; fat: number }

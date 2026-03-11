@@ -10,7 +10,9 @@ import {
   deriveMacroGrams,
   getTodaysLog,
   loadNutritionGoals,
+  loadSuggestionsFromSession,
   saveNutritionGoals,
+  saveSuggestionsToSession,
   searchFoods,
   suggestMeals,
   type NutritionFood,
@@ -203,7 +205,7 @@ export function NutritionPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [mealCount, setMealCount] = useState('3')
-  const [suggestions, setSuggestions] = useState<SuggestedMeal[]>([])
+  const [suggestions, setSuggestions] = useState<SuggestedMeal[]>(() => loadSuggestionsFromSession())
   const [suggesting, setSuggesting] = useState(false)
   const [suggestError, setSuggestError] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<number>>(new Set())
@@ -269,10 +271,6 @@ export function NutritionPage() {
     void loadTodayLog()
   }
 
-  useEffect(() => {
-    setSuggestions([])
-  }, [todayLog])
-
   async function handleSuggest() {
     setSuggestError(null)
     setSuggesting(true)
@@ -285,6 +283,7 @@ export function NutritionPage() {
       }
       const meals = await suggestMeals({ goals, alreadyConsumed: consumed, mealCount: Number(mealCount) })
       setSuggestions(meals)
+      saveSuggestionsToSession(meals)
       setExpandedMeals(new Set())
     } catch (e) {
       setSuggestError(e instanceof Error ? e.message : 'Failed to generate suggestions.')

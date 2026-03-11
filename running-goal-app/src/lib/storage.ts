@@ -1,4 +1,6 @@
 import type { RunningGoal, TrainingPlan, Workout } from './types'
+import type { NutritionGoals } from './nutrition'
+import { loadNutritionGoals, saveNutritionGoals } from './nutrition'
 import { supabase } from './supabase'
 
 const KEY_GOAL = 'runningPlan.goal.v1'
@@ -141,11 +143,13 @@ async function pushLocalStateToCloud(): Promise<void> {
   const activePlanId = loadActivePlanId()
   const plan = loadActivePlan()
 
+  const nutritionGoals = loadNutritionGoals()
   const payload: Record<string, unknown> = {
     user_id: currentUserId,
     goal,
     plan,
     updated_at: new Date().toISOString(),
+    nutrition_goals: nutritionGoals,
   }
   if (plans.length > 0) payload.plans = plans
   if (activePlanId) payload.active_plan_id = activePlanId
@@ -182,6 +186,10 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
 
   if (data.goal) localStorage.setItem(KEY_GOAL, JSON.stringify(data.goal))
   else if (!localGoal) localStorage.removeItem(KEY_GOAL)
+
+  if (data.nutrition_goals && typeof data.nutrition_goals === 'object') {
+    saveNutritionGoals(data.nutrition_goals as NutritionGoals)
+  }
 
   const cloudPlans = Array.isArray(data.plans) ? (data.plans as TrainingPlan[]) : null
   const cloudActiveId = typeof data.active_plan_id === 'string' ? data.active_plan_id : null
