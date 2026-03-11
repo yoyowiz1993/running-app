@@ -1,14 +1,15 @@
+import { motion } from 'framer-motion'
+import type { ComponentPropsWithoutRef } from 'react'
 import { cn } from '../lib/cn'
-import type { ButtonHTMLAttributes } from 'react'
 
-type Props = ButtonHTMLAttributes<HTMLButtonElement> & {
+type Props = ComponentPropsWithoutRef<typeof motion.button> & {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   size?: 'md' | 'lg'
 }
 
-export function Button({ className, variant = 'primary', size = 'md', ...props }: Props) {
+export function Button({ className, variant = 'primary', size = 'md', disabled, ...props }: Props) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed'
+    'inline-flex items-center justify-center gap-2 rounded-xl font-medium transition disabled:opacity-50 disabled:cursor-not-allowed'
   const sizes = size === 'lg' ? 'px-4 py-3 text-base' : 'px-3 py-2 text-sm'
   const styles =
     variant === 'primary'
@@ -19,6 +20,13 @@ export function Button({ className, variant = 'primary', size = 'md', ...props }
           ? 'bg-red-500/15 text-red-100 hover:bg-red-500/25 border border-red-500/30'
           : 'bg-transparent text-white/90 hover:bg-white/10'
 
-  return <button className={cn(base, sizes, styles, className)} {...props} />
+  return (
+    <motion.button
+      whileTap={disabled ? undefined : { scale: 0.96 }}
+      transition={{ duration: 0.1 }}
+      disabled={disabled}
+      className={cn(base, sizes, styles, className)}
+      {...props}
+    />
+  )
 }
-

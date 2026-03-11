@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'framer-motion'
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
@@ -19,14 +20,25 @@ function Shell() {
 
   return (
     <div className="min-h-full">
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/plan" element={<PlanPage />} />
-        <Route path="/calendar" element={<CalendarPage />} />
-        <Route path="/nutrition" element={<NutritionPage />} />
-        <Route path="/workout/:id" element={<WorkoutPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-      </Routes>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={loc.pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="min-h-full"
+        >
+          <Routes location={loc}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/plan" element={<PlanPage />} />
+            <Route path="/calendar" element={<CalendarPage />} />
+            <Route path="/nutrition" element={<NutritionPage />} />
+            <Route path="/workout/:id" element={<WorkoutPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+          </Routes>
+        </motion.div>
+      </AnimatePresence>
       {hideNav ? null : <BottomNav />}
     </div>
   )
