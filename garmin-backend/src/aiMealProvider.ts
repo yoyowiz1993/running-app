@@ -88,7 +88,7 @@ Return exactly ${mealCount} meal suggestion${mealCount !== 1 ? 's' : ''} as JSON
 
 export async function generateMealSuggestions(input: MealSuggestionInput): Promise<SuggestedMeal[]> {
   const apiKey = (process.env.AI_MEAL_API_KEY || process.env.AI_API_KEY)?.trim()
-  const model = process.env.AI_MODEL || 'gemini-2.5-flash-lite'
+  const model = process.env.AI_MODEL || 'gemini-3.1-flash-lite-preview'
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
