@@ -6,7 +6,7 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
-import { clampPace, formatPace, parsePaceToSecPerKm } from '../lib/pace'
+import { clampPace, parsePaceToSecPerKm } from '../lib/pace'
 import { createProgram } from '../lib/programs'
 import {
   deletePlan,
