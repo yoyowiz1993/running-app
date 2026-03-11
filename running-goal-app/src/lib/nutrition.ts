@@ -127,6 +127,38 @@ export async function getTodaysLog(userId: string): Promise<NutritionLogEntry[]>
   return (data ?? []) as NutritionLogEntry[]
 }
 
+export type SuggestedMeal = {
+  name: string
+  description: string
+  calories: number
+  protein: number
+  carbs: number
+  fat: number
+  ingredients: Array<{ item: string; amount: string }>
+}
+
+export async function suggestMeals(input: {
+  goals: NutritionGoals
+  alreadyConsumed: { calories: number; protein: number; carbs: number; fat: number }
+  mealCount: number
+}): Promise<SuggestedMeal[]> {
+  const base = await getApiBase()
+  const res = await fetch(`${base}/api/nutrition/suggest-meals`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      goals: input.goals,
+      alreadyConsumed: input.alreadyConsumed,
+      mealCount: input.mealCount,
+    }),
+    credentials: 'omit',
+    mode: 'cors',
+  })
+  const data = (await res.json()) as { meals?: SuggestedMeal[]; error?: string }
+  if (!res.ok) throw new Error(data.error ?? `Meal suggestion failed (${res.status})`)
+  return data.meals ?? []
+}
+
 export async function deleteLogEntry(userId: string, entryId: string): Promise<{ error: string | null }> {
   if (!supabase) return { error: 'Supabase not configured' }
   const { error } = await supabase

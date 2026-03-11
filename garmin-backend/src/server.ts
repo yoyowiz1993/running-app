@@ -4,6 +4,7 @@ import dotenv from 'dotenv'
 import { buildAuthUrl, exchangeCodeForToken, generatePKCE } from './garminAuth'
 import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
 import { generatePlanFromAI } from './aiPlanProvider'
+import { generateMealSuggestions } from './aiMealProvider'
 import { validateAndNormalize } from './planSchema'
 
 dotenv.config()
@@ -208,6 +209,48 @@ app.get('/api/nutrition/search', async (req, res) => {
   } catch (err) {
     console.warn('USDA search error', err)
     res.status(502).json({ error: 'Search failed', foods: [] })
+  }
+})
+
+app.post('/api/nutrition/suggest-meals', async (req, res) => {
+  if (!aiApiKey?.trim()) {
+    return res.status(503).json({ error: 'AI_API_KEY not configured', meals: [] })
+  }
+  const body = req.body as {
+    goals?: { calories?: number; proteinPct?: number; carbsPct?: number; fatPct?: number }
+    alreadyConsumed?: { calories?: number; protein?: number; carbs?: number; fat?: number }
+    mealCount?: number
+  }
+
+  const goals = {
+    calories: Math.round(Number(body?.goals?.calories) || 0),
+    proteinPct: Math.round(Number(body?.goals?.proteinPct) || 0),
+    carbsPct: Math.round(Number(body?.goals?.carbsPct) || 0),
+    fatPct: Math.round(Number(body?.goals?.fatPct) || 0),
+  }
+  const alreadyConsumed = {
+    calories: Math.round(Number(body?.alreadyConsumed?.calories) || 0),
+    protein: Math.round(Number(body?.alreadyConsumed?.protein) || 0),
+    carbs: Math.round(Number(body?.alreadyConsumed?.carbs) || 0),
+    fat: Math.round(Number(body?.alreadyConsumed?.fat) || 0),
+  }
+  const mealCount = Math.max(1, Math.min(5, Math.round(Number(body?.mealCount) || 1)))
+
+  if (goals.calories < 100 || goals.calories > 10000) {
+    return res.status(400).json({ error: 'goals.calories must be between 100 and 10000', meals: [] })
+  }
+  const pctSum = goals.proteinPct + goals.carbsPct + goals.fatPct
+  if (pctSum < 95 || pctSum > 105) {
+    return res.status(400).json({ error: 'Macro percentages must sum to ~100%', meals: [] })
+  }
+
+  try {
+    const meals = await generateMealSuggestions({ goals, alreadyConsumed, mealCount })
+    res.json({ meals })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Meal suggestion failed'
+    console.warn('Meal suggestion error', err)
+    res.status(502).json({ error: msg, meals: [] })
   }
 })
 

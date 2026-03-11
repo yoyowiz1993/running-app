@@ -1,8 +1,8 @@
-import { ChevronDown, ChevronUp, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
-import { Input, Label } from '../components/Field'
+import { Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import {
   addLogEntry,
@@ -12,9 +12,11 @@ import {
   loadNutritionGoals,
   saveNutritionGoals,
   searchFoods,
+  suggestMeals,
   type NutritionFood,
   type NutritionGoals,
   type NutritionLogEntry,
+  type SuggestedMeal,
 } from '../lib/nutrition'
 import { supabase } from '../lib/supabase'
 
@@ -200,6 +202,12 @@ export function NutritionPage() {
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [mealCount, setMealCount] = useState('3')
+  const [suggestions, setSuggestions] = useState<SuggestedMeal[]>([])
+  const [suggesting, setSuggesting] = useState(false)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
+  const [expandedMeals, setExpandedMeals] = useState<Set<number>>(new Set())
+
   useEffect(() => {
     let mounted = true
     supabase?.auth.getSession().then(({ data }) => {
@@ -260,6 +268,30 @@ export function NutritionPage() {
     void loadTodayLog()
   }
 
+  useEffect(() => {
+    setSuggestions([])
+  }, [todayLog])
+
+  async function handleSuggest() {
+    setSuggestError(null)
+    setSuggesting(true)
+    try {
+      const consumed = {
+        calories: todayLog.reduce((s, e) => s + (e.calories ?? 0), 0),
+        protein: Math.round(todayLog.reduce((s, e) => s + (e.protein ?? 0), 0)),
+        carbs: Math.round(todayLog.reduce((s, e) => s + (e.carbs ?? 0), 0)),
+        fat: Math.round(todayLog.reduce((s, e) => s + (e.fat ?? 0), 0)),
+      }
+      const meals = await suggestMeals({ goals, alreadyConsumed: consumed, mealCount: Number(mealCount) })
+      setSuggestions(meals)
+      setExpandedMeals(new Set())
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : 'Failed to generate suggestions.')
+    } finally {
+      setSuggesting(false)
+    }
+  }
+
   const totalCalories = todayLog.reduce((s, e) => s + (e.calories ?? 0), 0)
   const totalProtein = Math.round(todayLog.reduce((s, e) => s + (e.protein ?? 0), 0))
   const totalCarbs = Math.round(todayLog.reduce((s, e) => s + (e.carbs ?? 0), 0))
@@ -300,6 +332,98 @@ export function NutritionPage() {
             <MacroBar label="Carbs" consumed={totalCarbs} goal={carbsG} gradient="bg-emerald-400" />
             <MacroBar label="Fat" consumed={totalFat} goal={fatG} gradient="bg-amber-400" />
           </div>
+        </Card>
+
+        {/* ── AI meal suggestions ── */}
+        <Card className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-emerald-500">
+              <Sparkles className="h-4 w-4 text-white" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold text-white">AI meal suggestions</div>
+              <div className="text-xs text-white/40">Based on your remaining goals for today</div>
+            </div>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <div className="flex-1">
+              <Select value={mealCount} onChange={(e) => setMealCount(e.target.value)}>
+                <option value="1">1 meal</option>
+                <option value="2">2 meals</option>
+                <option value="3">3 meals</option>
+                <option value="4">4 meals</option>
+                <option value="5">5 meals</option>
+              </Select>
+            </div>
+            <Button onClick={() => void handleSuggest()} disabled={suggesting} className="shrink-0">
+              {suggesting ? (
+                <><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Generating...</>
+              ) : (
+                <><Sparkles className="h-4 w-4" /> Suggest</>
+              )}
+            </Button>
+          </div>
+
+          {suggestError ? (
+            <div className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+              {suggestError}
+            </div>
+          ) : null}
+
+          {suggestions.length > 0 ? (
+            <div className="mt-4 space-y-3">
+              {suggestions.map((meal, i) => {
+                const isExpanded = expandedMeals.has(i)
+                return (
+                  <div key={i} className="rounded-xl border border-white/10 bg-black/20 overflow-hidden">
+                    <div className="p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-white">{meal.name}</div>
+                          <div className="mt-0.5 text-xs text-white/50">{meal.description}</div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="text-sm font-bold text-amber-400">{meal.calories} cal</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-2 text-xs">
+                        <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-300">P {meal.protein}g</span>
+                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">C {meal.carbs}g</span>
+                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">F {meal.fat}g</span>
+                      </div>
+                    </div>
+                    {meal.ingredients.length > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMeals((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(i)) next.delete(i); else next.add(i)
+                            return next
+                          })}
+                          className="flex w-full items-center justify-between border-t border-white/5 px-3 py-2 text-xs text-white/40 hover:bg-white/5 transition"
+                        >
+                          <span>Ingredients ({meal.ingredients.length})</span>
+                          {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        </button>
+                        {isExpanded ? (
+                          <ul className="border-t border-white/5 px-3 py-2 space-y-1">
+                            {meal.ingredients.map((ing, j) => (
+                              <li key={j} className="flex justify-between text-xs">
+                                <span className="text-white/70">{ing.item}</span>
+                                <span className="text-white/40">{ing.amount}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
         </Card>
 
         {/* ── Search ── */}
