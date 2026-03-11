@@ -204,9 +204,9 @@ export function AuthPage() {
           </Card>
         </motion.div>
 
-        <motion.p {...fadeUp(0.4)} className="mt-6 text-center text-xs text-white/25">
+        <motion.div {...fadeUp(0.4)} className="mt-6 text-center text-xs text-white/25">
           Your data is encrypted and synced across devices.
-        </motion.p>
+        </motion.div>
       </div>
     </div>
   )
