@@ -1,6 +1,6 @@
 /**
  * AI provider for generating meal suggestions.
- * Uses the same Gemini API key as the training plan provider.
+ * Uses AI_MEAL_API_KEY if set, otherwise falls back to AI_API_KEY.
  */
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta'
@@ -87,7 +87,7 @@ Return exactly ${mealCount} meal suggestion${mealCount !== 1 ? 's' : ''} as JSON
 }
 
 export async function generateMealSuggestions(input: MealSuggestionInput): Promise<SuggestedMeal[]> {
-  const apiKey = process.env.AI_API_KEY?.trim()
+  const apiKey = (process.env.AI_MEAL_API_KEY || process.env.AI_API_KEY)?.trim()
   const model = process.env.AI_MODEL || 'gemini-2.0-flash'
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
