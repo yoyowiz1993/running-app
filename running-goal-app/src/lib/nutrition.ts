@@ -1,6 +1,44 @@
 import { getApiBase } from './garmin'
 import { supabase } from './supabase'
 
+export type NutritionGoals = {
+  calories: number
+  proteinPct: number
+  carbsPct: number
+  fatPct: number
+}
+
+const NUTRITION_GOALS_KEY = 'nutrition.goals.v1'
+const DEFAULT_GOALS: NutritionGoals = { calories: 2000, proteinPct: 30, carbsPct: 45, fatPct: 25 }
+
+export function loadNutritionGoals(): NutritionGoals {
+  try {
+    const raw = localStorage.getItem(NUTRITION_GOALS_KEY)
+    if (!raw) return { ...DEFAULT_GOALS }
+    const parsed = JSON.parse(raw) as Partial<NutritionGoals>
+    return {
+      calories: Number(parsed.calories) || DEFAULT_GOALS.calories,
+      proteinPct: Number(parsed.proteinPct) || DEFAULT_GOALS.proteinPct,
+      carbsPct: Number(parsed.carbsPct) || DEFAULT_GOALS.carbsPct,
+      fatPct: Number(parsed.fatPct) || DEFAULT_GOALS.fatPct,
+    }
+  } catch {
+    return { ...DEFAULT_GOALS }
+  }
+}
+
+export function saveNutritionGoals(goals: NutritionGoals): void {
+  localStorage.setItem(NUTRITION_GOALS_KEY, JSON.stringify(goals))
+}
+
+export function deriveMacroGrams(goals: NutritionGoals): { proteinG: number; carbsG: number; fatG: number } {
+  return {
+    proteinG: Math.round((goals.calories * goals.proteinPct / 100) / 4),
+    carbsG: Math.round((goals.calories * goals.carbsPct / 100) / 4),
+    fatG: Math.round((goals.calories * goals.fatPct / 100) / 9),
+  }
+}
+
 export type NutritionFood = {
   id: string
   description: string
