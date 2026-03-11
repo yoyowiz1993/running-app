@@ -9,8 +9,8 @@ import { validateAndNormalize } from './planSchema'
 import {
   buildStravaAuthUrl,
   exchangeStravaCode,
-  fetchStravaActivities,
-  getStravaConnectionStatus,
+  refreshStravaToken,
+  fetchStravaActivitiesWithToken,
 } from './stravaProvider'
 
 dotenv.config()
@@ -369,40 +369,64 @@ app.get('/auth/strava/callback', async (req, res) => {
     state?: string
     error?: string
   }
-  const redirectToFrontend = frontendUrl ? `${frontendUrl}#/settings?strava=` : '#/settings?strava='
+  const base = frontendUrl || ''
+  const errorRedirect = (msg: string) =>
+    res.redirect(302, `${base}#/settings?strava=error&message=${encodeURIComponent(msg)}`)
 
   if (error || !code || !userId) {
-    return res.redirect(302, redirectToFrontend + 'error&message=' + encodeURIComponent(error ?? 'missing_code'))
+    return errorRedirect(error ?? 'missing_code')
   }
 
   try {
-    await exchangeStravaCode(code, userId)
-    return res.redirect(302, redirectToFrontend + 'connected')
+    const tokens = await exchangeStravaCode(code)
+    // Pass tokens to frontend via URL hash — frontend stores them in Supabase
+    const params = new URLSearchParams({
+      strava: 'connected',
+      at: tokens.access_token,
+      rt: tokens.refresh_token,
+      ea: String(tokens.expires_at),
+      aid: String(tokens.athlete_id),
+      an: tokens.athlete_name,
+    })
+    return res.redirect(302, `${base}#/settings?${params.toString()}`)
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'token_exchange_failed'
-    return res.redirect(302, redirectToFrontend + 'error&message=' + encodeURIComponent(msg))
+    return errorRedirect(msg)
   }
 })
 
 // ── Strava activity routes ───────────────────────────────────────────────────
 
-app.get('/api/strava/status', async (req, res) => {
-  const userId = (req.query.user_id as string | undefined)?.trim()
-  if (!userId) return res.status(400).json({ ok: false, message: 'user_id required' })
-  try {
-    const status = await getStravaConnectionStatus(userId)
-    res.json({ ok: true, ...status })
-  } catch (err) {
-    res.status(502).json({ ok: false, message: err instanceof Error ? err.message : 'Failed' })
+app.post('/api/strava/activities', async (req, res) => {
+  const body = req.body as {
+    accessToken?: string
+    refreshToken?: string
+    expiresAt?: number
   }
-})
+  const { accessToken, refreshToken, expiresAt } = body
 
-app.get('/api/strava/activities', async (req, res) => {
-  const userId = (req.query.user_id as string | undefined)?.trim()
-  if (!userId) return res.status(400).json({ ok: false, message: 'user_id required' })
+  if (!accessToken || !refreshToken) {
+    return res.status(400).json({ ok: false, message: 'accessToken and refreshToken required', activities: [] })
+  }
+
   try {
-    const activities = await fetchStravaActivities(userId)
-    res.json({ ok: true, activities })
+    const nowSec = Math.floor(Date.now() / 1000)
+    let activeToken = accessToken
+    let newTokens: { accessToken: string; refreshToken: string; expiresAt: number } | undefined
+
+    // Refresh if token is expired or expiring within 5 minutes
+    if (!expiresAt || expiresAt < nowSec + 300) {
+      const refreshed = await refreshStravaToken(refreshToken)
+      activeToken = refreshed.access_token
+      newTokens = {
+        accessToken: refreshed.access_token,
+        refreshToken: refreshed.refresh_token,
+        expiresAt: refreshed.expires_at,
+      }
+    }
+
+    const activities = await fetchStravaActivitiesWithToken(activeToken)
+    res.json({ ok: true, activities, ...(newTokens ? { newTokens } : {}) })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Failed to fetch activities'
     res.status(502).json({ ok: false, message: msg, activities: [] })

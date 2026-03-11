@@ -1,13 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
-
-// ── Supabase client (service role — backend only) ─────────────────────────
-function getSupabase() {
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_KEY
-  if (!url || !key) return null
-  return createClient(url, key)
-}
-
 // ── Types ─────────────────────────────────────────────────────────────────
 
 export type StravaTokens = {
@@ -21,7 +11,7 @@ export type StravaTokens = {
 export type StravaActivity = {
   id: number
   name: string
-  startDateISO: string       // YYYY-MM-DD
+  startDateISO: string
   distanceKm: number
   movingSec: number
   elapsedSec: number
@@ -54,10 +44,7 @@ export function buildStravaAuthUrl(userId: string): string {
   return `https://www.strava.com/oauth/authorize?${params.toString()}`
 }
 
-export async function exchangeStravaCode(
-  code: string,
-  userId: string,
-): Promise<StravaTokens> {
+export async function exchangeStravaCode(code: string): Promise<StravaTokens> {
   const clientId = process.env.STRAVA_CLIENT_ID
   const clientSecret = process.env.STRAVA_CLIENT_SECRET
   if (!clientId || !clientSecret) {
@@ -87,62 +74,18 @@ export async function exchangeStravaCode(
     athlete?: { id?: number; firstname?: string; lastname?: string }
   }
 
-  const tokens: StravaTokens = {
+  return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at,
     athlete_id: data.athlete?.id ?? 0,
     athlete_name: [data.athlete?.firstname, data.athlete?.lastname].filter(Boolean).join(' ') || 'Strava User',
   }
-
-  await saveTokens(userId, tokens)
-  return tokens
 }
 
-// ── Token storage ─────────────────────────────────────────────────────────
+// ── Token refresh ─────────────────────────────────────────────────────────
 
-async function saveTokens(userId: string, tokens: StravaTokens): Promise<void> {
-  const supabase = getSupabase()
-  if (!supabase) {
-    console.warn('Supabase not configured — Strava tokens will not be persisted')
-    return
-  }
-  const { error } = await supabase
-    .from('user_state')
-    .upsert({
-      user_id: userId,
-      strava_access_token: tokens.access_token,
-      strava_refresh_token: tokens.refresh_token,
-      strava_expires_at: tokens.expires_at,
-      strava_athlete_id: tokens.athlete_id,
-      strava_athlete_name: tokens.athlete_name,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' })
-  if (error) console.warn('Failed to save Strava tokens:', error.message)
-}
-
-async function loadTokens(userId: string): Promise<StravaTokens | null> {
-  const supabase = getSupabase()
-  if (!supabase) return null
-  const { data, error } = await supabase
-    .from('user_state')
-    .select('strava_access_token, strava_refresh_token, strava_expires_at, strava_athlete_id, strava_athlete_name')
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (error || !data?.strava_access_token) return null
-  return {
-    access_token: data.strava_access_token as string,
-    refresh_token: data.strava_refresh_token as string,
-    expires_at: data.strava_expires_at as number,
-    athlete_id: (data.strava_athlete_id as number) ?? 0,
-    athlete_name: (data.strava_athlete_name as string) ?? '',
-  }
-}
-
-async function refreshIfNeeded(userId: string, tokens: StravaTokens): Promise<StravaTokens> {
-  const nowSec = Math.floor(Date.now() / 1000)
-  if (tokens.expires_at > nowSec + 300) return tokens // still valid with 5 min buffer
-
+export async function refreshStravaToken(refreshToken: string): Promise<StravaTokens> {
   const clientId = process.env.STRAVA_CLIENT_ID
   const clientSecret = process.env.STRAVA_CLIENT_SECRET
   if (!clientId || !clientSecret) throw new Error('Strava credentials not configured')
@@ -153,7 +96,7 @@ async function refreshIfNeeded(userId: string, tokens: StravaTokens): Promise<St
     body: JSON.stringify({
       client_id: clientId,
       client_secret: clientSecret,
-      refresh_token: tokens.refresh_token,
+      refresh_token: refreshToken,
       grant_type: 'refresh_token',
     }),
   })
@@ -164,31 +107,26 @@ async function refreshIfNeeded(userId: string, tokens: StravaTokens): Promise<St
     access_token: string
     refresh_token: string
     expires_at: number
+    athlete?: { id?: number; firstname?: string; lastname?: string }
   }
 
-  const refreshed: StravaTokens = {
-    ...tokens,
+  return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: data.expires_at,
+    athlete_id: 0,
+    athlete_name: '',
   }
-
-  await saveTokens(userId, refreshed)
-  return refreshed
 }
 
 // ── Activity fetching ─────────────────────────────────────────────────────
 
-export async function fetchStravaActivities(userId: string): Promise<StravaActivity[]> {
-  const tokens = await loadTokens(userId)
-  if (!tokens) throw new Error('Strava not connected for this user')
-
-  const fresh = await refreshIfNeeded(userId, tokens)
-
-  // Fetch last 30 activities (covers ~1 month of training)
+export async function fetchStravaActivitiesWithToken(
+  accessToken: string,
+): Promise<StravaActivity[]> {
   const url = 'https://www.strava.com/api/v3/athlete/activities?per_page=30'
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${fresh.access_token}` },
+    headers: { Authorization: `Bearer ${accessToken}` },
   })
 
   if (!res.ok) {
@@ -200,12 +138,12 @@ export async function fetchStravaActivities(userId: string): Promise<StravaActiv
     id: number
     name: string
     type: string
-    start_date_local: string   // ISO with time, local
-    distance: number           // meters
-    moving_time: number        // seconds
-    elapsed_time: number       // seconds
-    average_speed: number      // m/s
-    total_elevation_gain: number // meters
+    start_date_local: string
+    distance: number
+    moving_time: number
+    elapsed_time: number
+    average_speed: number
+    total_elevation_gain: number
     average_heartrate?: number
     max_heartrate?: number
     calories?: number
@@ -233,10 +171,4 @@ export async function fetchStravaActivities(userId: string): Promise<StravaActiv
         ...(a.calories != null && a.calories > 0 ? { calories: Math.round(a.calories) } : {}),
       }
     })
-}
-
-export async function getStravaConnectionStatus(userId: string): Promise<{ connected: boolean; athleteName?: string }> {
-  const tokens = await loadTokens(userId)
-  if (!tokens) return { connected: false }
-  return { connected: true, athleteName: tokens.athlete_name }
 }

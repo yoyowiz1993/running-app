@@ -9,7 +9,7 @@ import { signOut } from '../lib/auth'
 import { clearAllData, loadActivePlan, loadPlans } from '../lib/storage'
 import { computeStreak } from '../lib/stats'
 import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
-import { getStravaAuthUrl, fetchStravaConnectionStatus } from '../lib/strava'
+import { getStravaAuthUrl, fetchStravaConnectionStatus, saveStravaTokens } from '../lib/strava'
 import { supabase } from '../lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
@@ -88,8 +88,29 @@ export function SettingsPage() {
       window.history.replaceState(null, '', window.location.pathname + '#/settings')
     }
     if (strava === 'connected') {
-      setStravaStatus('connected')
+      // Parse tokens that the backend encoded into the redirect URL
+      const at = params.get('at')
+      const rt = params.get('rt')
+      const ea = params.get('ea')
+      const aid = params.get('aid')
+      const an = params.get('an') ?? ''
       window.history.replaceState(null, '', window.location.pathname + '#/settings')
+      if (at && rt && ea) {
+        void supabase?.auth.getUser().then(({ data }) => {
+          const uid = data.user?.id
+          if (!uid) return
+          void saveStravaTokens(uid, {
+            accessToken: at,
+            refreshToken: rt,
+            expiresAt: Number(ea),
+            athleteId: Number(aid ?? 0),
+            athleteName: an,
+          }).then(() => {
+            setStravaStatus('connected')
+            setStravaAthleteName(an)
+          })
+        })
+      }
     } else if (strava === 'error') {
       window.history.replaceState(null, '', window.location.pathname + '#/settings')
     }
