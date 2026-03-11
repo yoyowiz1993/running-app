@@ -100,11 +100,19 @@ export function deletePlan(planId: string): void {
   }
 }
 
-export function clearAllData(): void {
+function clearLocalKeys(): void {
   localStorage.removeItem(KEY_GOAL)
   localStorage.removeItem(KEY_PLAN)
   localStorage.removeItem(KEY_PLANS)
   localStorage.removeItem(KEY_ACTIVE_PLAN_ID)
+  // Clear nutrition goals too so they don't bleed between users
+  localStorage.removeItem('nutrition.goals')
+  // Clear session suggestions
+  sessionStorage.removeItem('nutrition.suggestions.session')
+}
+
+export function clearAllData(): void {
+  clearLocalKeys()
   scheduleCloudSync()
 }
 
@@ -164,6 +172,11 @@ async function pushLocalStateToCloud(): Promise<void> {
 export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (!supabase) return
   currentUserId = userId
+
+  // Always wipe local state first to prevent data from a previous user
+  // bleeding into the newly signed-in user's session.
+  clearLocalKeys()
+
   const { data, error } = await supabase
     .from('user_state')
     .select('*')
@@ -175,17 +188,12 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
     return
   }
 
-  const localGoal = loadGoal()
-  const localPlans = loadPlans()
-  const localActiveId = loadActivePlanId()
-
   if (!data) {
-    await pushLocalStateToCloud()
+    // Brand-new user — localStorage is already empty, nothing to push.
     return
   }
 
   if (data.goal) localStorage.setItem(KEY_GOAL, JSON.stringify(data.goal))
-  else if (!localGoal) localStorage.removeItem(KEY_GOAL)
 
   if (data.nutrition_goals && typeof data.nutrition_goals === 'object') {
     saveNutritionGoals(data.nutrition_goals as NutritionGoals)
@@ -201,15 +209,13 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
     localStorage.removeItem(KEY_PLAN)
   } else if (data.plan && typeof data.plan === 'object') {
     const legacy = data.plan as TrainingPlan
-    const migrated = { ...legacy, planName: legacy.planName ?? `Plan ${legacy.raceDateISO}`, endDateISO: legacy.endDateISO ?? legacy.raceDateISO }
+    const migrated = {
+      ...legacy,
+      planName: legacy.planName ?? `Plan ${legacy.raceDateISO}`,
+      endDateISO: legacy.endDateISO ?? legacy.raceDateISO,
+    }
     localStorage.setItem(KEY_PLANS, JSON.stringify([migrated]))
     localStorage.setItem(KEY_ACTIVE_PLAN_ID, migrated.id)
     localStorage.removeItem(KEY_PLAN)
-  } else if (!localPlans.length && !localActiveId) {
-    localStorage.removeItem(KEY_PLANS)
-    localStorage.removeItem(KEY_ACTIVE_PLAN_ID)
-    localStorage.removeItem(KEY_PLAN)
   }
-
-  await pushLocalStateToCloud()
 }

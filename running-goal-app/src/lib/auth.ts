@@ -1,5 +1,6 @@
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { clearAllData } from './storage'
 
 export async function getSession(): Promise<Session | null> {
   if (!supabase) return null
@@ -43,6 +44,7 @@ export async function signInWithGoogle(): Promise<string | null> {
 
 export async function signOut(): Promise<void> {
   if (!supabase) return
+  clearAllData()
   await supabase.auth.signOut()
 }
 
