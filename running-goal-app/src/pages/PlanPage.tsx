@@ -1,12 +1,12 @@
-import { addDays, format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
+import { format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
 import { Activity, ChevronRight, Flag, List, Plus, Sparkles, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
-import { clampPace, parsePaceToSecPerKm } from '../lib/pace'
+import { clampPace } from '../lib/pace'
 import { createProgram } from '../lib/programs'
 import {
   deletePlan,
@@ -18,8 +18,23 @@ import {
 } from '../lib/storage'
 import type { RunningGoal, TrainingPlan } from '../lib/types'
 
+const CLASSIC_DISTANCES = [
+  { label: '5K', value: '5' },
+  { label: '10K', value: '10' },
+  { label: '15K', value: '15' },
+  { label: 'Half Marathon (21.1K)', value: '21.1' },
+  { label: 'Marathon (42.2K)', value: '42.2' },
+  { label: 'Custom', value: 'custom' },
+]
+
 function todayISO(): string {
   return format(startOfDay(new Date()), 'yyyy-MM-dd')
+}
+
+function formatPaceFromSec(secPerKm: number): string {
+  const m = Math.floor(secPerKm / 60)
+  const s = Math.round(secPerKm % 60)
+  return `${m}:${String(s).padStart(2, '0')}/km`
 }
 
 function SectionLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
@@ -36,45 +51,81 @@ export function PlanPage() {
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadActivePlan())
   const [plans, setPlans] = useState<TrainingPlan[]>(() => loadPlans())
 
-  const defaultEndDate = format(addDays(new Date(), 56), 'yyyy-MM-dd')
+  // Distance
+  const [distancePreset, setDistancePreset] = useState<string>('')
+  const [customDistance, setCustomDistance] = useState('')
 
-  const [distanceKm, setDistanceKm] = useState('10')
-  const [paceText, setPaceText] = useState('5:30')
+  // Race time (for pace calculation)
+  const [raceHours, setRaceHours] = useState('')
+  const [raceMinutes, setRaceMinutes] = useState('')
+  const [raceSeconds, setRaceSeconds] = useState('')
+
+  // Dates
   const [planName, setPlanName] = useState('')
   const [planStartDate, setPlanStartDate] = useState(() => todayISO())
-  const [raceDate, setRaceDate] = useState(defaultEndDate)
+  const [raceDate, setRaceDate] = useState('')
+
+  // Runner profile
   const [fitnessLevel, setFitnessLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('intermediate')
   const [daysPerWeek, setDaysPerWeek] = useState('4')
   const [currentPaceText, setCurrentPaceText] = useState('')
   const [currentWeeklyKm, setCurrentWeeklyKm] = useState('')
   const [longestRecentRunKm, setLongestRecentRunKm] = useState('')
+
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const distanceKm = distancePreset === 'custom'
+    ? customDistance
+    : distancePreset
+
+  // Auto-calculate pace from race time + distance
+  const calculatedPaceSec = useMemo(() => {
+    const d = Number(distanceKm)
+    const h = Number(raceHours || 0)
+    const m = Number(raceMinutes || 0)
+    const s = Number(raceSeconds || 0)
+    const totalSec = h * 3600 + m * 60 + s
+    if (!d || d <= 0 || totalSec <= 0) return null
+    return Math.round(totalSec / d)
+  }, [distanceKm, raceHours, raceMinutes, raceSeconds])
+
+  // Parse current easy pace (min:sec format)
+  function parseCurrentPace(text: string): number | null {
+    if (!text.trim()) return null
+    const parts = text.split(':')
+    if (parts.length === 2) {
+      const min = Number(parts[0])
+      const sec = Number(parts[1])
+      if (!isNaN(min) && !isNaN(sec)) return min * 60 + sec
+    }
+    return null
+  }
 
   async function onCreatePlan(): Promise<void> {
     setError(null)
 
     const d = Number(distanceKm)
-    const p = parsePaceToSecPerKm(paceText)
+    if (!Number.isFinite(d) || d <= 0) { setError('Select or enter a valid distance.'); return }
+    if (!calculatedPaceSec) { setError('Enter your expected finish time to calculate pace.'); return }
+    const paceClamp = clampPace(calculatedPaceSec)
+
     const start = parseISO(planStartDate)
     const end = parseISO(raceDate)
-
-    if (!Number.isFinite(d) || d <= 0) { setError('Enter a valid distance.'); return }
-    if (!p) { setError('Enter pace like 5:30 (min:sec/km).'); return }
     if (!isValid(start) || !isValid(end)) { setError('Pick valid dates.'); return }
     if (isAfter(start, end)) { setError('Start date must be before race day.'); return }
 
     const goal: RunningGoal = {
       distanceKm: Math.round(d * 10) / 10,
-      targetPaceSecPerKm: clampPace(p),
+      targetPaceSecPerKm: paceClamp,
       raceDateISO: format(startOfDay(end), 'yyyy-MM-dd'),
       createdAtISO: new Date().toISOString(),
     }
     saveGoal(goal)
 
     const dpw = Math.max(2, Math.min(7, Number(daysPerWeek) || 4))
-    const cpace = parsePaceToSecPerKm(currentPaceText)
+    const cpace = parseCurrentPace(currentPaceText)
     const cwk = Number(currentWeeklyKm)
     const lrr = Number(longestRecentRunKm)
 
@@ -142,15 +193,70 @@ export function PlanPage() {
             <div className="space-y-3">
               <SectionLabel icon={<Flag className="h-3.5 w-3.5" />} text="Race details" />
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Distance */}
+              <div>
+                <Label>Race distance</Label>
+                <Select
+                  value={distancePreset}
+                  onChange={(e) => { setDistancePreset(e.target.value); setCustomDistance('') }}
+                >
+                  <option value="" disabled>Select distance…</option>
+                  {CLASSIC_DISTANCES.map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </Select>
+              </div>
+
+              {distancePreset === 'custom' && (
                 <div>
-                  <Label>Distance (km)</Label>
-                  <Input inputMode="decimal" value={distanceKm} onChange={(e) => setDistanceKm(e.target.value)} placeholder="10" />
+                  <Label>Custom distance (km)</Label>
+                  <Input
+                    inputMode="decimal"
+                    value={customDistance}
+                    onChange={(e) => setCustomDistance(e.target.value)}
+                    placeholder="e.g. 8"
+                  />
                 </div>
-                <div>
-                  <Label>Goal pace (min:sec/km)</Label>
-                  <Input inputMode="numeric" value={paceText} onChange={(e) => setPaceText(e.target.value)} placeholder="5:30" />
+              )}
+
+              {/* Race finish time → auto-pace */}
+              <div>
+                <Label>Target finish time</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="0h"
+                      value={raceHours}
+                      onChange={(e) => setRaceHours(e.target.value)}
+                    />
+                    <Help>Hours</Help>
+                  </div>
+                  <div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="50m"
+                      value={raceMinutes}
+                      onChange={(e) => setRaceMinutes(e.target.value)}
+                    />
+                    <Help>Minutes</Help>
+                  </div>
+                  <div>
+                    <Input
+                      inputMode="numeric"
+                      placeholder="00s"
+                      value={raceSeconds}
+                      onChange={(e) => setRaceSeconds(e.target.value)}
+                    />
+                    <Help>Seconds</Help>
+                  </div>
                 </div>
+                {calculatedPaceSec ? (
+                  <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1.5">
+                    <span className="text-xs text-white/50">Calculated pace:</span>
+                    <span className="text-sm font-semibold text-emerald-300">{formatPaceFromSec(calculatedPaceSec)}</span>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -199,7 +305,7 @@ export function PlanPage() {
                 <div>
                   <Label>Easy pace</Label>
                   <Input inputMode="numeric" value={currentPaceText} onChange={(e) => setCurrentPaceText(e.target.value)} placeholder="6:30" />
-                  <Help>Now</Help>
+                  <Help>min:sec/km</Help>
                 </div>
                 <div>
                   <Label>Weekly km</Label>

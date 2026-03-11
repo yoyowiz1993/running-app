@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp, Plus, Search, Sparkles, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, PenLine, Plus, RotateCcw, Search, Sparkles, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
@@ -194,6 +194,7 @@ export function NutritionPage() {
   const [goals, setGoals] = useState<NutritionGoals>(() => loadNutritionGoals())
   const [showGoals, setShowGoals] = useState(false)
 
+  const [entryTab, setEntryTab] = useState<'search' | 'manual'>('search')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<NutritionFood[]>([])
   const [searching, setSearching] = useState(false)
@@ -203,6 +204,14 @@ export function NutritionPage() {
   const [addUnit, setAddUnit] = useState('serving')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Manual entry state
+  const [manualName, setManualName] = useState('')
+  const [manualCal, setManualCal] = useState('')
+  const [manualProtein, setManualProtein] = useState('')
+  const [manualCarbs, setManualCarbs] = useState('')
+  const [manualFat, setManualFat] = useState('')
+  const [addingManual, setAddingManual] = useState(false)
 
   const [mealCount, setMealCount] = useState('3')
   const [suggestions, setSuggestions] = useState<SuggestedMeal[]>(() => loadSuggestionsFromSession())
@@ -268,6 +277,43 @@ export function NutritionPage() {
   async function handleDelete(entry: NutritionLogEntry) {
     if (!userId) return
     await deleteLogEntry(userId, entry.id)
+    void loadTodayLog()
+  }
+
+  async function handleAddManual() {
+    if (!userId || !manualName.trim() || !manualCal) return
+    setAddingManual(true)
+    await addLogEntry({
+      userId,
+      logDate: new Date().toISOString().slice(0, 10),
+      foodFdcId: null,
+      foodName: manualName.trim(),
+      amount: 1,
+      unit: 'serving',
+      calories: Math.round(Number(manualCal)),
+      protein: manualProtein ? Math.round(Number(manualProtein)) : null,
+      carbs: manualCarbs ? Math.round(Number(manualCarbs)) : null,
+      fat: manualFat ? Math.round(Number(manualFat)) : null,
+    })
+    setManualName(''); setManualCal(''); setManualProtein(''); setManualCarbs(''); setManualFat('')
+    setAddingManual(false)
+    void loadTodayLog()
+  }
+
+  async function handleRelogFood(entry: NutritionLogEntry) {
+    if (!userId) return
+    await addLogEntry({
+      userId,
+      logDate: new Date().toISOString().slice(0, 10),
+      foodFdcId: entry.food_fdc_id ?? null,
+      foodName: entry.food_name,
+      amount: entry.amount,
+      unit: entry.unit,
+      calories: entry.calories ?? 0,
+      protein: entry.protein ?? null,
+      carbs: entry.carbs ?? null,
+      fat: entry.fat ?? null,
+    })
     void loadTodayLog()
   }
 
@@ -459,102 +505,210 @@ export function NutritionPage() {
           ) : null}
         </Card>
 
-        {/* ── Search ── */}
+        {/* ── Food entry (Search / Manual) ── */}
         <Card className="p-4">
-          <Label>Search foods</Label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              placeholder="e.g. chicken breast, apple"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1"
-            />
-            <span className="flex items-center text-white/50">
-              <Search className="h-5 w-5" />
-            </span>
+          {/* Tab toggle */}
+          <div className="flex items-center rounded-xl border border-white/10 bg-white/5 p-0.5 mb-4">
+            <button
+              type="button"
+              onClick={() => { setEntryTab('search'); setSelectedFood(null); setError(null) }}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition ${entryTab === 'search' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
+            >
+              <Search className="h-3.5 w-3.5" /> Search
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEntryTab('manual'); setSelectedFood(null); setSearchQuery(''); setSearchResults([]); setError(null) }}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold transition ${entryTab === 'manual' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
+            >
+              <PenLine className="h-3.5 w-3.5" /> Manual
+            </button>
           </div>
 
-          {searching && <div className="mt-2 text-sm text-white/60">Searching...</div>}
-          {!searching && searchQuery.trim().length >= 2 && !error && searchResults.length === 0 && (
-            <div className="mt-2 text-sm text-white/60">No foods found.</div>
-          )}
+          {entryTab === 'search' ? (
+            <>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. chicken breast, apple"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="flex-1"
+                />
+                <span className="flex items-center text-white/50">
+                  <Search className="h-5 w-5" />
+                </span>
+              </div>
 
-          {searchResults.length > 0 && !selectedFood && (
-            <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
-              {searchResults.map((f) => (
-                <li key={f.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFood(f)
-                      const first = f.portions[0]
-                      setAddUnit(first?.unit ?? 'g')
-                      setAddAmount(first?.amount ?? 1)
-                    }}
-                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition"
-                  >
-                    <div className="font-medium">{f.description}</div>
-                    <div className="mt-0.5 flex gap-3 text-xs text-white/50">
-                      <span>{f.calories} cal</span>
-                      <span>P {Math.round(f.protein)}g</span>
-                      <span>C {Math.round(f.carbs)}g</span>
-                      <span>F {Math.round(f.fat)}g</span>
+              {searching && <div className="mt-2 text-sm text-white/60">Searching...</div>}
+              {!searching && searchQuery.trim().length >= 2 && !error && searchResults.length === 0 && (
+                <div className="mt-2 text-sm text-white/60">No foods found.</div>
+              )}
+
+              {searchResults.length > 0 && !selectedFood && (
+                <ul className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+                  {searchResults.map((f) => (
+                    <li key={f.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedFood(f)
+                          const first = f.portions[0]
+                          setAddUnit(first?.unit ?? 'g')
+                          setAddAmount(first?.amount ?? 1)
+                        }}
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-left text-sm text-white hover:bg-white/10 transition"
+                      >
+                        <div className="font-medium">{f.description}</div>
+                        <div className="mt-0.5 flex gap-3 text-xs text-white/50">
+                          <span>{f.calories} cal</span>
+                          <span>P {Math.round(f.protein)}g</span>
+                          <span>C {Math.round(f.carbs)}g</span>
+                          <span>F {Math.round(f.fat)}g</span>
+                        </div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {selectedFood && (
+                <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                  <div className="text-sm font-semibold text-white">{selectedFood.description}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>Amount</Label>
+                      <Input
+                        type="number" min={0.25} step={0.25}
+                        value={addAmount}
+                        onChange={(e) => setAddAmount(Number(e.target.value) || 1)}
+                      />
                     </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                    <div>
+                      <Label>Unit</Label>
+                      <select
+                        value={addUnit}
+                        onChange={(e) => setAddUnit(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:border-emerald-400/50"
+                      >
+                        {getUnitOptions(selectedFood).map((unit) => (
+                          <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="text-sm">
+                      <div className="font-semibold text-white">{Math.round(selectedFood.calories * selectedMultiplier)} cal</div>
+                      <div className="text-xs text-white/50">
+                        P {Math.round(selectedFood.protein * selectedMultiplier)}g &middot;
+                        C {Math.round(selectedFood.carbs * selectedMultiplier)}g &middot;
+                        F {Math.round(selectedFood.fat * selectedMultiplier)}g
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" onClick={() => setSelectedFood(null)}>Cancel</Button>
+                      <Button onClick={() => void handleAdd()} disabled={adding}>
+                        <Plus className="h-4 w-4" /> {adding ? 'Adding...' : 'Add'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-          {selectedFood && (
-            <div className="mt-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-              <div className="text-sm font-semibold text-white">{selectedFood.description}</div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              {error && (
+                <div className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  {error}
+                </div>
+              )}
+            </>
+          ) : (
+            /* Manual entry */
+            <div className="space-y-3">
+              <div>
+                <Label>Food name</Label>
+                <Input
+                  value={manualName}
+                  onChange={(e) => setManualName(e.target.value)}
+                  placeholder="e.g. Homemade oatmeal"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Amount</Label>
+                  <Label>Calories</Label>
                   <Input
-                    type="number" min={0.25} step={0.25}
-                    value={addAmount}
-                    onChange={(e) => setAddAmount(Number(e.target.value) || 1)}
+                    inputMode="numeric"
+                    value={manualCal}
+                    onChange={(e) => setManualCal(e.target.value)}
+                    placeholder="350"
                   />
                 </div>
                 <div>
-                  <Label>Unit</Label>
-                  <select
-                    value={addUnit}
-                    onChange={(e) => setAddUnit(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:border-emerald-400/50"
-                  >
-                    {getUnitOptions(selectedFood).map((unit) => (
-                      <option key={unit} value={unit}>{unit}</option>
-                    ))}
-                  </select>
+                  <Label>Protein (g)</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={manualProtein}
+                    onChange={(e) => setManualProtein(e.target.value)}
+                    placeholder="20"
+                  />
+                </div>
+                <div>
+                  <Label>Carbs (g)</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={manualCarbs}
+                    onChange={(e) => setManualCarbs(e.target.value)}
+                    placeholder="45"
+                  />
+                </div>
+                <div>
+                  <Label>Fat (g)</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={manualFat}
+                    onChange={(e) => setManualFat(e.target.value)}
+                    placeholder="8"
+                  />
                 </div>
               </div>
-              <div className="mt-3 flex items-center justify-between gap-2">
-                <div className="text-sm">
-                  <div className="font-semibold text-white">{Math.round(selectedFood.calories * selectedMultiplier)} cal</div>
-                  <div className="text-xs text-white/50">
-                    P {Math.round(selectedFood.protein * selectedMultiplier)}g &middot;
-                    C {Math.round(selectedFood.carbs * selectedMultiplier)}g &middot;
-                    F {Math.round(selectedFood.fat * selectedMultiplier)}g
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setSelectedFood(null)}>Cancel</Button>
-                  <Button onClick={() => void handleAdd()} disabled={adding}>
-                    <Plus className="h-4 w-4" /> {adding ? 'Adding...' : 'Add'}
-                  </Button>
-                </div>
-              </div>
+              <Button
+                className="w-full"
+                onClick={() => void handleAddManual()}
+                disabled={addingManual || !manualName.trim() || !manualCal}
+              >
+                <Plus className="h-4 w-4" />
+                {addingManual ? 'Adding...' : 'Add to log'}
+              </Button>
             </div>
           )}
 
-          {error && (
-            <div className="mt-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-              {error}
-            </div>
-          )}
+          {/* ── Recent foods row ── */}
+          {todayLog.length > 0 ? (() => {
+            const seen = new Set<string>()
+            const recent = todayLog.filter((e) => {
+              if (seen.has(e.food_name)) return false
+              seen.add(e.food_name); return true
+            }).slice(0, 8)
+            return (
+              <div className="mt-4 border-t border-white/5 pt-3">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <RotateCcw className="h-3 w-3 text-white/30" />
+                  <span className="text-xs text-white/40 font-medium">Recent — tap to re-log</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {recent.map((e, i) => (
+                    <button
+                      key={`${e.food_name}-${i}`}
+                      type="button"
+                      onClick={() => void handleRelogFood(e)}
+                      className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/70 transition hover:bg-white/10 hover:text-white"
+                    >
+                      {e.food_name} <span className="text-white/30">{e.calories} cal</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          })() : null}
         </Card>
 
         {/* ── Log ── */}

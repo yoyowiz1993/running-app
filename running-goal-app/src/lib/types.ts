@@ -35,6 +35,7 @@ export type Workout = {
   stages: WorkoutStage[]
   totalDurationSec: number
   completedAtISO?: string
+  missedAtISO?: string
   // Garmin fields
   garminActivityId?: string
   garminDistanceKm?: number

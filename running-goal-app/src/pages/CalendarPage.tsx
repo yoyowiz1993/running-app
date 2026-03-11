@@ -1,5 +1,5 @@
 import { addDays, format, getDaysInMonth, isValid, parseISO, startOfMonth } from 'date-fns'
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Grid3X3, List, Play, RefreshCw, UploadCloud } from 'lucide-react'
+import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Grid3X3, List, Play } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -20,6 +20,64 @@ import {
 import { supabase } from '../lib/supabase'
 import type { TrainingPlan, Workout } from '../lib/types'
 import { formatDurationShort } from '../lib/time'
+
+// ── Brand buttons ──────────────────────────────────────────────────────────
+function StravaButton({ onClick, loading, label }: { onClick: () => void; loading: boolean; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="flex items-center gap-1.5 rounded-xl border border-[#FC4C02]/30 bg-[#FC4C02]/15 px-3 py-1.5 text-xs font-semibold text-[#FC4C02] transition hover:bg-[#FC4C02]/25 disabled:opacity-50"
+    >
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+      </svg>
+      {loading ? 'Syncing…' : (label ?? 'Strava')}
+    </button>
+  )
+}
+
+function GarminButton({ onClick, loading, label }: { onClick: () => void; loading: boolean; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="flex items-center gap-1.5 rounded-xl border border-[#1F6DAA]/30 bg-[#1F6DAA]/15 px-3 py-1.5 text-xs font-semibold text-[#5BA3D0] transition hover:bg-[#1F6DAA]/25 disabled:opacity-50"
+    >
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 4.5a7.5 7.5 0 110 15 7.5 7.5 0 010-15zm0 3a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" />
+      </svg>
+      {loading ? 'Syncing…' : (label ?? 'Garmin')}
+    </button>
+  )
+}
+
+// ── Workout status ─────────────────────────────────────────────────────────
+function getWorkoutStatus(w: Workout, todayISO: string): 'completed' | 'missed' | 'pending' {
+  if (w.completedAtISO) return 'completed'
+  if (w.missedAtISO) return 'missed'
+  if (w.type === 'rest') return 'completed'
+  if (w.dateISO < todayISO) return 'missed'
+  return 'pending'
+}
+
+function StatusBadge({ status }: { status: 'completed' | 'missed' | 'pending' }) {
+  if (status === 'completed') return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+      <CheckCircle2 className="h-3 w-3" /> Done
+    </span>
+  )
+  if (status === 'missed') return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold text-red-300">
+      ✕ Missed
+    </span>
+  )
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-white/40">
+      · Pending
+    </span>
+  )
+}
 
 function fmtDate(dateISO: string): string {
   const d = parseISO(dateISO)
@@ -108,7 +166,6 @@ export function CalendarPage() {
   const nav = useNavigate()
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadActivePlan())
   const [plans, setPlans] = useState<TrainingPlan[]>(() => loadPlans())
-  const [syncingWorkoutId, setSyncingWorkoutId] = useState<string | null>(null)
   const [syncingAll, setSyncingAll] = useState(false)
   const [syncingStrava, setSyncingStrava] = useState(false)
   const [stravaMessage, setStravaMessage] = useState<string>('')
@@ -160,16 +217,6 @@ export function CalendarPage() {
     setPlan(nextPlan)
   }
 
-  async function syncOne(w: Workout): Promise<void> {
-    if (!plan || w.type === 'rest') return
-    setSyncingWorkoutId(w.id)
-    const results = await pushWorkoutsToGarmin([toGarminPushInput(w)])
-    const patched = applyPushResults([w], results)
-    const nextPlan = updateWorkouts(plan, patched)
-    savePlan(nextPlan)
-    setPlan(nextPlan)
-    setSyncingWorkoutId(null)
-  }
 
   async function syncAll(): Promise<void> {
     if (!plan) return
@@ -226,55 +273,57 @@ export function CalendarPage() {
           <>
             {/* ── Plan header ── */}
             <Card className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <div className="text-base font-semibold text-white">
-                      {plan.planName ?? `Race ${plan.goal.distanceKm}km`}
-                    </div>
-                    {plans.length > 1 ? (
-                      <select
-                        value={plan.id}
-                        onChange={(e) => switchPlan(e.target.value)}
-                        className="rounded-lg border border-white/20 bg-black/30 px-2 py-1 text-sm text-white outline-none focus:border-emerald-400/50"
-                      >
-                        {plans.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.planName ?? `Plan ${p.raceDateISO}`}
-                          </option>
-                        ))}
-                      </select>
-                    ) : null}
+              {/* Row 1: name + plan switcher + view toggle */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1 flex items-center gap-2">
+                  <div className="truncate text-base font-bold text-white">
+                    {plan.planName ?? `${plan.goal.distanceKm}km Plan`}
                   </div>
-                  <div className="mt-1 text-sm text-white/60">
-                    {formatPaceWithSpeed(plan.goal.targetPaceSecPerKm)} &middot; {plan.startDateISO} – {plan.raceDateISO}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {/* View toggle */}
-                  <div className="flex items-center rounded-xl border border-white/10 bg-white/5 p-0.5">
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`rounded-lg p-1.5 transition ${viewMode === 'grid' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
+                  {plans.length > 1 ? (
+                    <select
+                      value={plan.id}
+                      onChange={(e) => switchPlan(e.target.value)}
+                      className="shrink-0 rounded-lg border border-white/15 bg-black/30 px-2 py-0.5 text-xs text-white/70 outline-none focus:border-emerald-400/50"
                     >
-                      <Grid3X3 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setViewMode('list')}
-                      className={`rounded-lg p-1.5 transition ${viewMode === 'list' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
-                    >
-                      <List className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                  <Button variant="secondary" size="md" onClick={() => void syncFromStrava()} disabled={syncingStrava || syncingAll}>
-                    <RefreshCw className={`h-4 w-4 ${syncingStrava ? 'animate-spin' : ''}`} />
-                    {syncingStrava ? 'Syncing...' : 'Strava'}
-                  </Button>
-                  <Button variant="secondary" size="md" onClick={() => void syncAll()} disabled={syncingAll || syncingStrava}>
-                    <UploadCloud className="h-4 w-4" />
-                    {syncingAll ? 'Syncing...' : 'Garmin'}
-                  </Button>
+                      {plans.map((p) => (
+                        <option key={p.id} value={p.id}>{p.planName ?? `Plan ${p.raceDateISO}`}</option>
+                      ))}
+                    </select>
+                  ) : null}
                 </div>
+                <div className="flex items-center rounded-xl border border-white/10 bg-white/5 p-0.5 shrink-0">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`rounded-lg p-1.5 transition ${viewMode === 'grid' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
+                  >
+                    <Grid3X3 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`rounded-lg p-1.5 transition ${viewMode === 'list' ? 'bg-white/15 text-white' : 'text-white/40 hover:text-white/70'}`}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Row 2: stat pills */}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
+                  {plan.goal.distanceKm} km
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
+                  {formatPaceWithSpeed(plan.goal.targetPaceSecPerKm)}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] text-white/60">
+                  {plan.startDateISO} → {plan.raceDateISO}
+                </span>
+              </div>
+
+              {/* Row 3: sync buttons */}
+              <div className="mt-3 flex items-center gap-2">
+                <StravaButton onClick={() => void syncFromStrava()} loading={syncingStrava} />
+                <GarminButton onClick={() => void syncAll()} loading={syncingAll} />
               </div>
             </Card>
 
@@ -415,44 +464,32 @@ export function CalendarPage() {
                     <div className="px-1 text-xs font-semibold uppercase tracking-wide text-white/50">
                       {fmtDate(dateISO)}
                     </div>
-                    {items.map((w) => (
+                    {items.map((w) => {
+                      const status = getWorkoutStatus(w, todayISO)
+                      return (
                       <Card key={w.id} className="p-3">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${typeBadge(w.type)}`}
-                              >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <div className={`inline-flex rounded-full border px-2 py-0.5 text-xs ${typeBadge(w.type)}`}>
                                 {w.type}
                               </div>
-                              {w.completedAtISO ? (
-                                <span className="inline-flex items-center gap-1 text-xs text-emerald-200">
-                                  <CheckCircle2 className="h-4 w-4" /> done
-                                </span>
-                              ) : null}
-                              {w.garminSyncStatus ? (
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
-                                    w.garminSyncStatus === 'synced'
-                                      ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'
-                                      : w.garminSyncStatus === 'failed'
-                                        ? 'border-red-400/30 bg-red-500/10 text-red-200'
-                                        : 'border-amber-300/30 bg-amber-500/10 text-amber-100'
-                                  }`}
-                                >
-                                  Garmin {w.garminSyncStatus}
-                                </span>
-                              ) : null}
+                              {w.type !== 'rest' && <StatusBadge status={status} />}
                               {w.stravaSyncStatus === 'synced' ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-orange-400/30 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-200">
-                                  Strava ✓
+                                <span className="inline-flex items-center gap-1 rounded-full border border-[#FC4C02]/30 bg-[#FC4C02]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FC4C02]">
+                                  S Strava
+                                </span>
+                              ) : null}
+                              {w.garminSyncStatus === 'synced' ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-[#1F6DAA]/30 bg-[#1F6DAA]/10 px-2 py-0.5 text-[10px] font-semibold text-[#5BA3D0]">
+                                  G Garmin
                                 </span>
                               ) : null}
                             </div>
-                            <div className="mt-1 text-white">{w.title}</div>
-                            <div className="mt-1 inline-flex items-center gap-2 text-xs text-white/60">
+                            <div className="mt-1 text-sm font-medium text-white">{w.title}</div>
+                            <div className="mt-0.5 inline-flex items-center gap-2 text-xs text-white/50">
                               <span className="inline-flex items-center gap-1">
-                                <Clock className="h-4 w-4" /> {formatDurationShort(w.totalDurationSec)}
+                                <Clock className="h-3.5 w-3.5" /> {formatDurationShort(w.totalDurationSec)}
                               </span>
                               {typeof w.plannedDistanceKm === 'number' ? (
                                 <span>· {w.plannedDistanceKm} km</span>
@@ -460,28 +497,26 @@ export function CalendarPage() {
                             </div>
                           </div>
 
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1.5 shrink-0">
                             {w.type !== 'rest' ? (
                               <Button size="md" onClick={() => nav(`/workout/${w.id}`)}>
-                                <Play className="h-4 w-4" /> Start
+                                <Play className="h-3.5 w-3.5" /> Start
                               </Button>
                             ) : null}
-                            <Button variant="ghost" onClick={() => toggleComplete(w)}>
-                              {w.completedAtISO ? 'Undo' : 'Mark done'}
-                            </Button>
-                            {w.type !== 'rest' ? (
-                              <Button
-                                variant="ghost"
-                                onClick={() => void syncOne(w)}
-                                disabled={syncingWorkoutId === w.id || syncingAll}
-                              >
-                                {syncingWorkoutId === w.id ? 'Syncing...' : 'Send to Garmin'}
+                            {w.type !== 'rest' && status !== 'completed' ? (
+                              <Button variant="ghost" size="md" onClick={() => toggleComplete(w)}>
+                                ✓ Done
+                              </Button>
+                            ) : null}
+                            {w.type !== 'rest' && status === 'completed' ? (
+                              <Button variant="ghost" size="md" onClick={() => toggleComplete(w)}>
+                                Undo
                               </Button>
                             ) : null}
                           </div>
                         </div>
                       </Card>
-                    ))}
+                    )})}
                   </div>
                 ))}
               </div>

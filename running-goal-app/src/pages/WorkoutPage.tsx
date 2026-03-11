@@ -1,6 +1,6 @@
 import confetti from 'canvas-confetti'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Pause, Play, RefreshCw, SkipBack, SkipForward, SquareCheck, UploadCloud } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Pause, Play, RefreshCw, SkipBack, SkipForward, SquareCheck } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -15,6 +15,64 @@ import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
 import { useWorkoutPlayer } from '../lib/useWorkoutPlayer'
 import type { TrainingPlan, Workout, WorkoutType } from '../lib/types'
+
+// ── Branded sync buttons ───────────────────────────────────────────────────
+function StravaButton({ onClick, loading, label }: { onClick: () => void; loading: boolean; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#FC4C02]/30 bg-[#FC4C02]/15 px-3 py-2 text-xs font-semibold text-[#FC4C02] transition hover:bg-[#FC4C02]/25 disabled:opacity-50"
+    >
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
+      </svg>
+      {loading ? 'Syncing…' : (label ?? 'Sync Strava')}
+    </button>
+  )
+}
+
+function GarminButton({ onClick, loading, label }: { onClick: () => void; loading: boolean; label?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#1F6DAA]/30 bg-[#1F6DAA]/15 px-3 py-2 text-xs font-semibold text-[#5BA3D0] transition hover:bg-[#1F6DAA]/25 disabled:opacity-50"
+    >
+      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 4.5a7.5 7.5 0 110 15 7.5 7.5 0 010-15zm0 3a4.5 4.5 0 100 9 4.5 4.5 0 000-9z" />
+      </svg>
+      {loading ? 'Syncing…' : (label ?? 'Garmin')}
+    </button>
+  )
+}
+
+// ── Status helpers ─────────────────────────────────────────────────────────
+function getWorkoutStatus(w: Workout, todayISO: string): 'completed' | 'missed' | 'pending' {
+  if (w.completedAtISO) return 'completed'
+  if (w.missedAtISO) return 'missed'
+  if (w.type === 'rest') return 'completed'
+  if (w.dateISO < todayISO) return 'missed'
+  return 'pending'
+}
+
+function StatusBadge({ status }: { status: 'completed' | 'missed' | 'pending' }) {
+  if (status === 'completed') return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-300">
+      <CheckCircle2 className="h-3.5 w-3.5" /> Completed
+    </span>
+  )
+  if (status === 'missed') return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-400/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-300">
+      ✕ Missed
+    </span>
+  )
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-xs font-semibold text-white/40">
+      · Pending
+    </span>
+  )
+}
 
 function getWorkoutAccent(type: WorkoutType): { bg: string; ring: string; glow: string } {
   switch (type) {
@@ -145,12 +203,29 @@ export function WorkoutPage() {
   const [syncing, setSyncing] = useState(false)
   const [syncingStrava, setSyncingStrava] = useState(false)
   const [stravaError, setStravaError] = useState<string>('')
-  const completed = Boolean(workout?.completedAtISO)
+  const todayISO = new Date().toISOString().slice(0, 10)
+  const status = workout ? getWorkoutStatus(workout, todayISO) : 'pending'
   const accent = getWorkoutAccent(workout?.type ?? 'easy')
 
   function markComplete(): void {
     if (!plan || !workout) return
-    const updated: Workout = { ...workout, completedAtISO: new Date().toISOString() }
+    const updated: Workout = { ...workout, completedAtISO: new Date().toISOString(), missedAtISO: undefined }
+    const nextPlan = updateWorkout(plan, updated)
+    savePlan(nextPlan)
+    setPlan(nextPlan)
+  }
+
+  function markMissed(): void {
+    if (!plan || !workout) return
+    const updated: Workout = { ...workout, missedAtISO: new Date().toISOString(), completedAtISO: undefined }
+    const nextPlan = updateWorkout(plan, updated)
+    savePlan(nextPlan)
+    setPlan(nextPlan)
+  }
+
+  function resetStatus(): void {
+    if (!plan || !workout) return
+    const updated: Workout = { ...workout, completedAtISO: undefined, missedAtISO: undefined }
     const nextPlan = updateWorkout(plan, updated)
     savePlan(nextPlan)
     setPlan(nextPlan)
@@ -254,13 +329,21 @@ export function WorkoutPage() {
 
             {/* Completion badge */}
             <AnimatePresence>
-              {completed ? (
+              {status === 'completed' ? (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.7 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/25 bg-emerald-500/15 px-3 py-1 text-xs text-emerald-100"
                 >
                   <SquareCheck className="h-3.5 w-3.5" /> Completed
+                </motion.div>
+              ) : status === 'missed' ? (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.7 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-red-400/25 bg-red-500/15 px-3 py-1 text-xs text-red-200"
+                >
+                  ✕ Missed
                 </motion.div>
               ) : null}
             </AnimatePresence>
@@ -359,36 +442,48 @@ export function WorkoutPage() {
               </Button>
             </div>
 
-            {/* Secondary actions */}
-            <div className="flex gap-2 w-full flex-wrap">
-              {!completed ? (
-                <Button variant="ghost" className="flex-1" onClick={markComplete}>
-                  <SquareCheck className="h-4 w-4" /> Mark complete
-                </Button>
-              ) : null}
-              {workout.type !== 'rest' ? (
-                <Button
-                  variant="secondary"
-                  className="flex-1"
+            {/* Status badge */}
+            {workout.type !== 'rest' ? (
+              <div className="flex items-center justify-center">
+                <StatusBadge status={status} />
+              </div>
+            ) : null}
+
+            {/* Status action buttons */}
+            {workout.type !== 'rest' ? (
+              <div className="flex gap-2 w-full">
+                {status !== 'completed' ? (
+                  <Button variant="ghost" className="flex-1" onClick={markComplete}>
+                    <SquareCheck className="h-4 w-4" /> Mark complete
+                  </Button>
+                ) : null}
+                {status !== 'missed' ? (
+                  <Button variant="ghost" className="flex-1" onClick={markMissed}>
+                    ✕ Mark missed
+                  </Button>
+                ) : null}
+                {(status === 'completed' || status === 'missed') && (workout.completedAtISO || workout.missedAtISO) ? (
+                  <Button variant="ghost" className="flex-1" onClick={resetStatus}>
+                    <RefreshCw className="h-4 w-4" /> Reset
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Sync buttons */}
+            {workout.type !== 'rest' ? (
+              <div className="flex gap-2 w-full">
+                <StravaButton
                   onClick={() => void syncFromStrava()}
-                  disabled={syncingStrava || syncing}
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncingStrava ? 'animate-spin' : ''}`} />
-                  {syncingStrava ? 'Syncing...' : workout.stravaSyncStatus === 'synced' ? 'Re-sync Strava' : 'Sync Strava'}
-                </Button>
-              ) : null}
-              {workout.type !== 'rest' ? (
-                <Button
-                  variant="secondary"
-                  className="flex-1"
+                  loading={syncingStrava}
+                  label={workout.stravaSyncStatus === 'synced' ? 'Re-sync Strava' : 'Sync Strava'}
+                />
+                <GarminButton
                   onClick={() => void syncWorkout()}
-                  disabled={syncing || syncingStrava}
-                >
-                  <UploadCloud className="h-4 w-4" />
-                  {syncing ? 'Syncing...' : 'Garmin'}
-                </Button>
-              ) : null}
-            </div>
+                  loading={syncing}
+                />
+              </div>
+            ) : null}
             {stravaError ? (
               <div className="w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                 {stravaError}
