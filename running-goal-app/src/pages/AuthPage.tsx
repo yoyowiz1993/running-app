@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { Lock, Mail } from 'lucide-react'
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Input } from '../components/Field'
@@ -35,10 +35,26 @@ const FEATURES = [
   { label: 'Streak Tracking', color: 'bg-amber-400' },
 ]
 
-const fadeUp = (delay = 0) => ({
-  initial: { opacity: 0, y: 20 },
-  animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut', delay } },
-})
+function FadeUp({
+  delay = 0,
+  className,
+  children,
+}: {
+  delay?: number
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: 'easeOut', delay }}
+      className={className}
+    >
+      {children}
+    </motion.div>
+  )
+}
 
 export function AuthPage() {
   const [mode, setMode] = useState<'signin' | 'signup'>('signin')
@@ -88,7 +104,7 @@ export function AuthPage() {
       <div className="safe-area-px safe-area-pt relative mx-auto flex w-full max-w-md flex-col px-4 pb-12 pt-14">
 
         {/* ── Hero ── */}
-        <motion.div {...fadeUp(0)} className="mb-10 text-center">
+        <FadeUp delay={0} className="mb-10 text-center">
           <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-emerald-500 text-3xl shadow-[0_12px_48px_rgba(139,92,246,0.4)]">
             🏃
           </div>
@@ -96,7 +112,7 @@ export function AuthPage() {
           <p className="mt-2 text-base text-white/60">Train smarter. Run faster.</p>
 
           {/* Feature pills */}
-          <motion.div {...fadeUp(0.15)} className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <FadeUp delay={0.15} className="mt-5 flex flex-wrap items-center justify-center gap-2">
             {FEATURES.map((f) => (
               <div
                 key={f.label}
@@ -106,11 +122,11 @@ export function AuthPage() {
                 {f.label}
               </div>
             ))}
-          </motion.div>
-        </motion.div>
+          </FadeUp>
+        </FadeUp>
 
         {/* ── Auth card ── */}
-        <motion.div {...fadeUp(0.25)}>
+        <FadeUp delay={0.25}>
           <Card className="p-5">
 
             {/* Google — primary CTA */}
@@ -202,11 +218,11 @@ export function AuthPage() {
               {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
             </Button>
           </Card>
-        </motion.div>
+        </FadeUp>
 
-        <motion.div {...fadeUp(0.4)} className="mt-6 text-center text-xs text-white/25">
+        <FadeUp delay={0.4} className="mt-6 text-center text-xs text-white/25">
           Your data is encrypted and synced across devices.
-        </motion.div>
+        </FadeUp>
       </div>
     </div>
   )
