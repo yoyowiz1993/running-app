@@ -171,7 +171,7 @@ Return JSON:
 
 export async function generatePlanFromAI(input: AiPlanInput): Promise<string> {
   const apiKey = process.env.AI_API_KEY?.trim()
-  const model = process.env.AI_MODEL || 'gemini-2.0-flash'
+  const model = process.env.AI_MODEL || 'gemini-2.5-flash-lite'
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
