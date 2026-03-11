@@ -207,6 +207,7 @@ export function NutritionPage() {
   const [suggesting, setSuggesting] = useState(false)
   const [suggestError, setSuggestError] = useState<string | null>(null)
   const [expandedMeals, setExpandedMeals] = useState<Set<number>>(new Set())
+  const [loggingMealIndex, setLoggingMealIndex] = useState<number | null>(null)
 
   useEffect(() => {
     let mounted = true
@@ -290,6 +291,25 @@ export function NutritionPage() {
     } finally {
       setSuggesting(false)
     }
+  }
+
+  async function handleLogMeal(meal: SuggestedMeal, index: number) {
+    if (!userId) return
+    setLoggingMealIndex(index)
+    await addLogEntry({
+      userId,
+      logDate: new Date().toISOString().slice(0, 10),
+      foodFdcId: null,
+      foodName: meal.name,
+      amount: 1,
+      unit: 'meal',
+      calories: meal.calories,
+      protein: meal.protein,
+      carbs: meal.carbs,
+      fat: meal.fat,
+    })
+    setLoggingMealIndex(null)
+    void loadTodayLog()
   }
 
   const totalCalories = todayLog.reduce((s, e) => s + (e.calories ?? 0), 0)
@@ -387,10 +407,24 @@ export function NutritionPage() {
                           <div className="text-sm font-bold text-amber-400">{meal.calories} cal</div>
                         </div>
                       </div>
-                      <div className="mt-2 flex gap-2 text-xs">
-                        <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-300">P {meal.protein}g</span>
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">C {meal.carbs}g</span>
-                        <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">F {meal.fat}g</span>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex gap-2 text-xs">
+                          <span className="rounded-full bg-sky-500/15 px-2 py-0.5 text-sky-300">P {meal.protein}g</span>
+                          <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-emerald-300">C {meal.carbs}g</span>
+                          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-amber-300">F {meal.fat}g</span>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          size="md"
+                          disabled={loggingMealIndex === i}
+                          onClick={() => void handleLogMeal(meal, i)}
+                        >
+                          {loggingMealIndex === i ? (
+                            <><span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> Logging...</>
+                          ) : (
+                            <><Plus className="h-3.5 w-3.5" /> Log this meal</>
+                          )}
+                        </Button>
                       </div>
                     </div>
                     {meal.ingredients.length > 0 ? (
