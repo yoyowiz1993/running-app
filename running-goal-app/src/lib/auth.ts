@@ -31,7 +31,9 @@ export async function signUp(email: string, password: string): Promise<string | 
 
 export async function signInWithGoogle(): Promise<string | null> {
   if (!supabase) return 'Supabase is not configured.'
-  const redirectTo = `${window.location.origin}/`
+  // Use the full current URL (origin + pathname) so the redirect lands on
+  // the correct subpath (e.g. /running-app/) instead of bare origin root.
+  const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
   const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: { redirectTo },
