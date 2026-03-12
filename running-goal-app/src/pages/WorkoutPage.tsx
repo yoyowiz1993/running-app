@@ -443,7 +443,7 @@ export function WorkoutPage() {
                 transition={player.status === 'running' ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
               >
                 <motion.div
-                  key={player.remainingSec}
+                  key={player.status === 'finished' ? 'done' : player.remainingSec}
                   initial={{ scale: 1.04, opacity: 0.7 }}
                   animate={{
                     scale: player.remainingSec <= 10 && player.remainingSec > 0 ? 1.02 : 1,
@@ -452,7 +452,7 @@ export function WorkoutPage() {
                   transition={{ duration: 0.2 }}
                   className="text-[56px] font-bold tabular-nums tracking-tight text-white leading-none"
                 >
-                  {formatClock(player.remainingSec)}
+                  {player.status === 'finished' ? 'Done' : formatClock(player.remainingSec)}
                 </motion.div>
                 {player.currentStage?.targetPaceSecPerKm ? (
                   <div className="mt-1.5 text-center text-xs font-medium text-white/50 leading-relaxed max-w-[260px]">
@@ -461,16 +461,18 @@ export function WorkoutPage() {
                 ) : null}
                 {(player.status === 'running' || player.status === 'paused') &&
                 player.currentStage?.targetPaceSecPerKm &&
-                player.currentStage?.durationSec != null ? (
-                  <div className="mt-1 text-xs text-white/40">
-                    ~
-                    {(
-                      (player.currentStage.durationSec - player.remainingSec) /
-                      player.currentStage.targetPaceSecPerKm
-                    ).toFixed(1)}{' '}
-                    km
-                  </div>
-                ) : null}
+                player.currentStage?.durationSec != null ? (() => {
+                  const distanceKm = Math.max(
+                    0,
+                    (player.currentStage!.durationSec - player.remainingSec) /
+                      player.currentStage!.targetPaceSecPerKm!
+                  )
+                  return distanceKm >= 0.05 ? (
+                    <div className="mt-1 text-xs text-white/40">
+                      ~{distanceKm.toFixed(1)} km
+                    </div>
+                  ) : null
+                })() : null}
               </motion.div>
             </div>
 
@@ -483,7 +485,7 @@ export function WorkoutPage() {
                 <div className="text-xs text-white/40">
                   Next: <span className="text-white/60">{player.nextStage.label}</span>
                 </div>
-                {player.currentStage ? (
+                {player.currentStage && player.status !== 'finished' ? (
                   <div className="text-[11px] text-white/35">
                     {getStageTip(player.currentStage.kind, player.stageIndex)}
                   </div>
@@ -498,7 +500,7 @@ export function WorkoutPage() {
                   </div>
                 ) : null}
               </div>
-            ) : player.currentStage ? (
+            ) : player.currentStage && player.status !== 'finished' ? (
               <div className="text-[11px] text-white/35 text-center">
                 {getStageTip(player.currentStage.kind, player.stageIndex)}
               </div>
