@@ -1,6 +1,6 @@
 import confetti from 'canvas-confetti'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, CheckCircle2, Pause, Play, RefreshCw, SkipBack, SkipForward, SquareCheck } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Pause, Play, RefreshCw, SkipBack, SkipForward, SquareCheck, Volume2, VolumeX } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -15,6 +15,7 @@ import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
 import { useWorkoutPlayer } from '../lib/useWorkoutPlayer'
+import { isVoiceSupported } from '../lib/voiceCues'
 import type { TrainingPlan, Workout, WorkoutType, WorkoutStageKind } from '../lib/types'
 
 function getStageTip(kind: WorkoutStageKind, stageIndex: number): string {
@@ -221,12 +222,16 @@ export function WorkoutPage() {
   const confettiFiredRef = useRef(false)
 
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadPlan())
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    if (!isVoiceSupported()) return false
+    return localStorage.getItem('runpace.voiceEnabled') === 'true'
+  })
   const workout = useMemo<Workout | null>(() => {
     if (!plan) return null
     return plan.workouts.find((w) => w.id === workoutId) ?? null
   }, [plan, workoutId])
 
-  const player = useWorkoutPlayer(workout)
+  const player = useWorkoutPlayer(workout, { voiceEnabled })
   const [syncing, setSyncing] = useState(false)
   const [syncingStrava, setSyncingStrava] = useState(false)
   const [stravaError, setStravaError] = useState<string>('')
@@ -420,9 +425,26 @@ export function WorkoutPage() {
       <TopBar
         title={workout.title}
         right={
-          <Button variant="ghost" onClick={() => nav(-1)}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {isVoiceSupported() && workout.type !== 'rest' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !voiceEnabled
+                  setVoiceEnabled(next)
+                  localStorage.setItem('runpace.voiceEnabled', String(next))
+                }}
+                className={`rounded-lg p-2 transition ${voiceEnabled ? 'text-emerald-400' : 'text-white/40 hover:text-white/60'}`}
+                aria-label={voiceEnabled ? 'Voice cues on' : 'Voice cues off'}
+                title={voiceEnabled ? 'Voice cues on' : 'Voice cues off'}
+              >
+                {voiceEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+              </button>
+            ) : null}
+            <Button variant="ghost" onClick={() => nav(-1)}>
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          </div>
         }
       />
 

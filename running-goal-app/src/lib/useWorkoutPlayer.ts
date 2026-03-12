@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Workout } from './types'
+import { speakStage, speakWorkoutComplete } from './voiceCues'
 
 type Status = 'idle' | 'running' | 'paused' | 'finished'
+
+type Options = { voiceEnabled?: boolean }
 
 type AudioEngine = {
   ctx: AudioContext
@@ -23,7 +26,11 @@ function beep(engine: AudioEngine, frequency = 880, durationMs = 120): void {
   o.stop(t0 + durationMs / 1000 + 0.02)
 }
 
-export function useWorkoutPlayer(workout: Workout | null) {
+export function useWorkoutPlayer(workout: Workout | null, options?: Options) {
+  const voiceEnabled = options?.voiceEnabled ?? false
+  const voiceEnabledRef = useRef(voiceEnabled)
+  voiceEnabledRef.current = voiceEnabled
+
   const stages = workout?.stages ?? []
 
   const [status, setStatus] = useState<Status>('idle')
@@ -80,6 +87,10 @@ export function useWorkoutPlayer(workout: Workout | null) {
     stageDurationSecRef.current = dur
     stageStartMsRef.current = Date.now()
     setRemainingSec(dur)
+    if (voiceEnabledRef.current && (status === 'running' || status === 'paused')) {
+      const s = stages[clamped]
+      if (s) speakStage(s, clamped, stages.length)
+    }
   }
 
   function start(): void {
@@ -93,6 +104,7 @@ export function useWorkoutPlayer(workout: Workout | null) {
     stageStartMsRef.current = Date.now()
     stageDurationSecRef.current = stages[stageIndex]?.durationSec ?? 0
     startTicker()
+    if (voiceEnabledRef.current && stages[0]) speakStage(stages[0], 0, stages.length)
   }
 
   function pause(): void {
@@ -117,6 +129,7 @@ export function useWorkoutPlayer(workout: Workout | null) {
       setStatus('finished')
       stopTicker()
       setRemainingSec(0)
+      if (voiceEnabledRef.current) speakWorkoutComplete()
       if (engineRef.current) {
         beep(engineRef.current, 988, 110)
         setTimeout(() => engineRef.current && beep(engineRef.current, 740, 110), 160)
