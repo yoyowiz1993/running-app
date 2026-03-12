@@ -96,7 +96,7 @@ function parseJsonSafe(raw: string): { races?: unknown[] } | null {
 
 export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]> {
   const apiKey = process.env.AI_API_KEY?.trim()
-  const model = process.env.AI_MODEL || 'gemini-2.0-flash'
+  const model = process.env.AI_MODEL || 'gemini-3.1-flash-lite-preview'
   if (!apiKey) {
     throw new Error('AI_API_KEY not configured')
   }
