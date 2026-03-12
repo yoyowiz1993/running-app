@@ -24,33 +24,17 @@ export type RaceResult = {
   longitude?: number
 }
 
-const SYSTEM_PROMPT = `You are an expert sports event coordinator specializing in Israeli athletics and marathon logistics. Your task is to provide a comprehensive, up-to-date list of running races in Israel.
+const SYSTEM_PROMPT = `You are an expert sports event coordinator specializing in Israeli athletics and marathon logistics. Your task is to provide a comprehensive list of running races in Israel based on your knowledge.
 
-**Objective:** For a given set of distances (e.g., 5K, 10K, 21.1K, 42.2K) and date range, find and return EVERY professional race in Israel scheduled in that period that includes those categories. Be comprehensive — return 10–20+ races when the date range spans multiple months, not just 3–5.
+**Objective:** For a given set of distances (e.g., 5K, 10K, 21.1K, 42.2K) and date range, find and return EVERY professional race in Israel scheduled in that period that includes those categories. Be comprehensive — return all races you know that match, including major marathons (Jerusalem, Tel Aviv, Dead Sea, Eilat, Haifa, Tiberias), night runs (Be'er Sheva LightRun, Petah Tikva, Tel Aviv Night Run, Yarkon Park), municipal Mirotz events (Herzliya, Kfar Saba, Haifa, Ra'anana, Holon, Netanya), trail runs (Sovev Emek), championship events (Winner Nesher 10K), and regional races. Do not limit to a few — return 10–20+ when the date range spans many months.
 
-**Known 2026 dates (use these — do not guess):**
-- Jerusalem Marathon: 2026-03-27 (NOT March 13 or 20)
-- Be'er Sheva LightRun (IKEA Night Run): 2026-04-29
-- Herzliya Race (Mirotz Herzliya): 2026-05-02
-- Kfar Saba Race: 2026-05-09
-- Petah Tikva Night Run: 2026-06-04
-- Yarkon Park Night Run (Tel Aviv): 2026-10-09
-- Tel Aviv Night Run (TLV Night Run): 2026-10-29
-- Sovev Emek (Trail Run): 2026-11-05
-- Winner Nesher Race (Israel 10K Championship): 2026-11-06
-- Mirotz Haifa: 2026-11-20
-- Eilat Desert Marathon: 2026-11-27
-- Winner Emek HaMa'ayanot: 2026-12-04 or 2026-12-11 (mid-December)
-- Beit She'an Valley Marathon: 2026-12-04
+**Dates:** Use the most accurate dates from your knowledge. For recurring annual races, use the date from the official schedule you know (e.g. Jerusalem Marathon is typically late March, Tel Aviv Night Run in late October). When the exact day is uncertain, use the first day of the typical month. Never invent dates.
 
-**Races to include (when in date range):** Jerusalem Marathon, Tel Aviv Marathon, Dead Sea Marathon, Eilat Marathon, Be'er Sheva LightRun, Herzliya Race, Kfar Saba Race, Petah Tikva Night Run, Yarkon Park Night Run, Tel Aviv Night Run, Sovev Emek, Winner Nesher, Mirotz Haifa, Eilat Desert Marathon, Winner Emek HaMa'ayanot, Beit She'an Marathon, Haifa Marathon, Tiberias Marathon, Ra'anana Mirotz, Holon Mirotz, Netanya Mirotz, and any other verified races.
-
-**Data Requirements:** For every race:
-- race_name, date (YYYY-MM-DD), city, distances_available, surface_type, official_website, description.
+**Data Requirements:** For every race: race_name, date (YYYY-MM-DD), city, distances_available, surface_type, official_website, description.
 
 **Constraints:**
 - Return strictly JSON matching the schema. No extra text.
-- Include ALL races that match the criteria. Do not limit to 3–5.`
+- Include ALL races that match the criteria. Only omit races you do not know about.`
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
