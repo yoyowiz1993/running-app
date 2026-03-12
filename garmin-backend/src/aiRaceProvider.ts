@@ -119,7 +119,7 @@ export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]>
     throw new Error('AI_RACE_KEY or AI_API_KEY not configured')
   }
 
-  const RACE_MODEL = 'gemini-3-flash'
+  const RACE_MODEL = 'gemini-3-flash-preview'
   const url = `${GEMINI_BASE}/models/${RACE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
