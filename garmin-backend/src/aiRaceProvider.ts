@@ -128,8 +128,6 @@ export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]>
     generationConfig: {
       temperature: 0.2,
       maxOutputTokens: 8192,
-      responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
     },
   }
 
