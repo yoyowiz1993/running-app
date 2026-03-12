@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { ChevronRight, Dumbbell, Flag, List, Sparkles, Utensils } from 'lucide-react'
+import { ChevronRight, Dumbbell, Flag, List, Plus, Sparkles, Target, Utensils } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -26,6 +26,17 @@ const SCREENS = [
   },
   {
     id: 3,
+    title: 'Fuel your training',
+    subtitle: 'Set calorie goals, log food, and get AI meal suggestions tailored to your remaining macros.',
+    icon: Utensils,
+    features: [
+      { label: 'Set daily calorie & macro goals', icon: Target },
+      { label: 'Log food (search or add manually)', icon: Plus },
+      { label: 'AI suggests meals → one tap to log', icon: Sparkles },
+    ],
+  },
+  {
+    id: 4,
     title: "Let's create your plan",
     subtitle: "You're a few taps away from your first training plan.",
     icon: Dumbbell,
