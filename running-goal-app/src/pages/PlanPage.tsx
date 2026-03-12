@@ -149,9 +149,16 @@ export function PlanPage() {
           ...(Number.isFinite(lrr) && lrr > 0 ? { longestRecentRunKm: lrr } : {}),
         },
       })
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'PlanPage.tsx:beforeSavePlan',message:'about to savePlan',data:{newPlanId:newPlan?.id},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
+      // #endregion
       savePlan(newPlan)
+      const afterPlans = loadPlans()
+      // #region agent log
+      fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'PlanPage.tsx:afterSavePlan',message:'after savePlan',data:{loadPlansLength:afterPlans.length},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
       setPlan(newPlan)
-      setPlans(loadPlans())
+      setPlans(afterPlans)
       if (isFirstPlan) {
         void confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } })
       }

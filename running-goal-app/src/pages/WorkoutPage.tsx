@@ -255,6 +255,37 @@ export function WorkoutPage() {
     return total
   }, [workout?.stages, player.stageIndex, player.remainingSec, player.status])
 
+  const totalDurationSec = useMemo(() => {
+    const stages = workout?.stages ?? []
+    return stages.reduce((s, st) => s + st.durationSec, 0)
+  }, [workout?.stages])
+
+  const estimatedTotalDistanceKm = useMemo(() => {
+    const stages = workout?.stages ?? []
+    return stages.reduce(
+      (sum, st) => sum + (st.targetPaceSecPerKm ? st.durationSec / st.targetPaceSecPerKm : 0),
+      0
+    )
+  }, [workout?.stages])
+
+  const showProgressBars =
+    (player.status === 'running' || player.status === 'paused' || player.status === 'finished') &&
+    workout
+  const timeProgress =
+    totalDurationSec > 0
+      ? player.status === 'finished'
+        ? 1
+        : Math.min(1, totalElapsedSec / totalDurationSec)
+      : 0
+  const timeDisplaySec = player.status === 'finished' ? totalDurationSec : totalElapsedSec
+  const distanceProgress =
+    estimatedTotalDistanceKm > 0
+      ? player.status === 'finished'
+        ? 1
+        : Math.min(1, cumulativeDistanceKm / estimatedTotalDistanceKm)
+      : 0
+  const distanceDisplayKm = player.status === 'finished' ? estimatedTotalDistanceKm : cumulativeDistanceKm
+
   function markComplete(): void {
     if (!plan || !workout) return
     const updated: Workout = { ...workout, completedAtISO: new Date().toISOString(), missedAtISO: undefined }
@@ -498,6 +529,42 @@ export function WorkoutPage() {
                 <span className="text-white/60 font-medium">~{cumulativeDistanceKm.toFixed(1)} km total</span>
               ) : null}
             </div>
+
+            {/* Time and distance progress bars */}
+            {showProgressBars ? (
+              <div className="mt-4 w-full space-y-3">
+                <div>
+                  <div className="flex items-center justify-between text-xs text-white/70 mb-1">
+                    <span>Time</span>
+                    <span className="tabular-nums">
+                      {formatClock(timeDisplaySec)} / {formatClock(totalDurationSec)}
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-[width] duration-300"
+                      style={{ width: `${timeProgress * 100}%` }}
+                    />
+                  </div>
+                </div>
+                {estimatedTotalDistanceKm > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-white/70 mb-1">
+                      <span>Distance</span>
+                      <span className="tabular-nums">
+                        ~{distanceDisplayKm.toFixed(1)} / ~{estimatedTotalDistanceKm.toFixed(1)} km
+                      </span>
+                    </div>
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-400 transition-[width] duration-300"
+                        style={{ width: `${distanceProgress * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Stage dots */}
             <StageDots count={workout.stages.length} current={player.stageIndex} />
