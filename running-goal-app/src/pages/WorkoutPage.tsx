@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
-import { formatPaceWithSpeed } from '../lib/pace'
+import { formatPace, formatPaceWithTreadmillLabels } from '../lib/pace'
 import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
@@ -386,8 +386,8 @@ export function WorkoutPage() {
                   {formatClock(player.remainingSec)}
                 </motion.div>
                 {player.currentStage?.targetPaceSecPerKm ? (
-                  <div className="mt-1.5 text-xs font-medium text-white/50">
-                    {formatPaceWithSpeed(player.currentStage.targetPaceSecPerKm)}
+                  <div className="mt-1.5 text-xs font-medium text-white/50 leading-relaxed">
+                    {formatPaceWithTreadmillLabels(player.currentStage.targetPaceSecPerKm)}
                   </div>
                 ) : null}
               </div>
@@ -507,7 +507,7 @@ export function WorkoutPage() {
                 Garmin: {workout.garminDistanceKm.toFixed(2)} km ·{' '}
                 {formatClock(workout.garminDurationSec ?? 0)}
                 {workout.garminAvgPaceSecPerKm
-                  ? ` · ${formatPaceWithSpeed(workout.garminAvgPaceSecPerKm)}`
+                  ? ` · ${formatPaceWithTreadmillLabels(workout.garminAvgPaceSecPerKm)}`
                   : ''}
               </div>
             ) : null}
@@ -542,8 +542,8 @@ export function WorkoutPage() {
                 { label: 'Distance', value: `${workout.stravaDistanceKm!.toFixed(2)} km` },
                 { label: 'Moving time', value: formatDurationShort(workout.stravaMovingSec ?? 0) },
                 { label: 'Elapsed time', value: formatDurationShort(workout.stravaElapsedSec ?? 0) },
-                ...(workout.stravaAvgPaceSecPerKm ? [{ label: 'Avg pace', value: formatPaceWithSpeed(workout.stravaAvgPaceSecPerKm) }] : []),
-                ...(workout.stravaAvgSpeedKph ? [{ label: 'Avg speed', value: `${workout.stravaAvgSpeedKph.toFixed(1)} km/h` }] : []),
+                ...(workout.stravaAvgPaceSecPerKm ? [{ label: 'Avg pace per km', value: formatPace(workout.stravaAvgPaceSecPerKm) }] : []),
+                ...(workout.stravaAvgSpeedKph ? [{ label: 'Avg treadmill speed', value: `${workout.stravaAvgSpeedKph.toFixed(1)} km/h` }] : []),
                 ...(workout.stravaElevationGainM != null ? [{ label: 'Elevation', value: `${workout.stravaElevationGainM} m` }] : []),
                 ...(workout.stravaAvgHeartRate ? [{ label: 'Avg HR', value: `${workout.stravaAvgHeartRate} bpm` }] : []),
                 ...(workout.stravaMaxHeartRate ? [{ label: 'Max HR', value: `${workout.stravaMaxHeartRate} bpm` }] : []),
@@ -588,7 +588,7 @@ export function WorkoutPage() {
                       <div className="mt-0.5 text-xs text-white/50">
                         {formatDurationShort(s.durationSec)}
                         {s.targetPaceSecPerKm
-                          ? ` · ${formatPaceWithSpeed(s.targetPaceSecPerKm)}`
+                          ? ` · ${formatPaceWithTreadmillLabels(s.targetPaceSecPerKm)}`
                           : ''}
                       </div>
                     </div>

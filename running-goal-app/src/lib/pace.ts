@@ -36,6 +36,13 @@ export function formatPaceWithSpeed(secPerKm: number): string {
   return `${pace} (${kmh.toFixed(1)} km/h)`
 }
 
+/** Labeled format for treadmill clarity: "Pace per km: X:XX/km · Treadmill speed: X.X km/h" */
+export function formatPaceWithTreadmillLabels(secPerKm: number): string {
+  const pace = formatPace(secPerKm)
+  const kmh = secPerKmToKmh(secPerKm)
+  return `Pace per km: ${pace} · Treadmill speed: ${kmh.toFixed(1)} km/h`
+}
+
 export function clampPace(secPerKm: number): number {
   return Math.min(Math.max(secPerKm, 120), 720)
 }
