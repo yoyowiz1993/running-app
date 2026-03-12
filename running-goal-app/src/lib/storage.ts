@@ -1,6 +1,6 @@
 import type { RunningGoal, TrainingPlan, Workout } from './types'
 import type { NutritionGoals } from './nutrition'
-import { loadNutritionGoals, saveNutritionGoals } from './nutrition'
+import { saveNutritionGoals } from './nutrition'
 import { supabase } from './supabase'
 
 const KEY_GOAL = 'runningPlan.goal.v1'
@@ -173,21 +173,18 @@ async function pushLocalStateToCloud(): Promise<void> {
   const activePlanId = loadActivePlanId()
   const plan = loadActivePlan()
 
-  const nutritionGoals = loadNutritionGoals()
-  const onboardingComplete = loadOnboardingComplete()
+  // Core columns (base schema + multi-plan). Omit onboarding_complete and nutrition_goals
+  // so sync works even when those migrations haven't been run (avoids "column not found" error).
   const payload: Record<string, unknown> = {
     user_id: currentUserId,
     goal,
     plan,
     updated_at: new Date().toISOString(),
-    nutrition_goals: nutritionGoals,
-    onboarding_complete: onboardingComplete,
   }
   if (plans.length > 0) payload.plans = plans
   if (activePlanId) payload.active_plan_id = activePlanId
 
   const { error } = await supabase.from('user_state').upsert(payload as Record<string, unknown>, { onConflict: 'user_id' })
-
   if (error) {
     console.warn('Cloud sync failed:', error.message)
   }

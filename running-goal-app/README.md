@@ -82,7 +82,7 @@ create policy "users_delete_own_nutrition"
   on public.nutrition_log for delete using (auth.uid() = user_id);
 ```
 
-4. **Multi-plan support** (optional). Run in Supabase SQL editor to enable multiple plans per user:
+4. **Multi-plan support** (required for plan sync). Run in Supabase SQL editor to enable multiple plans per user:
 
 ```sql
 alter table public.user_state
@@ -90,9 +90,9 @@ alter table public.user_state
   add column if not exists active_plan_id text;
 ```
 
-Or run `supabase-multi-plan.sql` from this repo.
+5. **Full schema** (recommended – enables onboarding/nutrition cloud sync). Run `supabase-migrations/user_state_full_schema.sql` in Supabase SQL editor. If plans still don't persist after login, run this migration; it adds any missing columns.
 
-5. In frontend env vars (see below), set:
+6. In frontend env vars (see below), set:
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_ANON_KEY`
    - `VITE_API_BASE_URL` (your Garmin backend URL; optional if `public/config.json` has `apiBaseUrl`)

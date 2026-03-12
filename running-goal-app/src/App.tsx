@@ -13,7 +13,7 @@ import { AuthPage } from './pages/AuthPage'
 import { OnboardingPage } from './pages/OnboardingPage'
 import { getSession, onAuthChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
-import { hydrateLocalFromCloud, loadOnboardingComplete, loadPlans, setCloudUserId } from './lib/storage'
+import { clearAllData, hydrateLocalFromCloud, loadOnboardingComplete, loadPlans, setCloudUserId } from './lib/storage'
 
 function Shell() {
   const loc = useLocation()
@@ -74,6 +74,7 @@ export default function App() {
         }
       } else {
         setCloudUserId(null)
+        clearAllData() // Clear so switching accounts doesn't show previous user's data
       }
     })
     return () => {
