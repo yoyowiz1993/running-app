@@ -276,7 +276,9 @@ app.post('/api/races/search', async (req, res) => {
   const distances = Array.isArray(body?.distances) ? body.distances.filter((d): d is string => typeof d === 'string' && d.length > 0) : undefined
 
   try {
-    const races = await searchRaces({ dateFrom, dateTo, distances })
+    const input: Parameters<typeof searchRaces>[0] = { dateFrom, dateTo }
+    if (distances && distances.length > 0) (input as Record<string, unknown>).distances = distances
+    const races = await searchRaces(input)
     res.json({ races })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Race search failed'
