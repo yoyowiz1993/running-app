@@ -1,6 +1,6 @@
 /**
  * AI provider for searching running races in Israel.
- * Uses professional system prompt + JSON schema for structured output (Gemini 3.1 Flash).
+ * Uses AI_RACE_KEY (or AI_API_KEY fallback), Gemini 2.5 Flash, and Google Search grounding for exact dates.
  */
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta'
@@ -24,19 +24,40 @@ export type RaceResult = {
   longitude?: number
 }
 
-const SYSTEM_PROMPT = `You are an expert sports event coordinator for Israeli running races. You have access to Google Search — use it to find EXACT, VERIFIED dates.
+/**
+ * Optimized system prompt: site-specific Israeli sources (shvoong, 4sport, realtiming),
+ * anchor races verification, and strict exclusion clause to prevent hallucinated dates.
+ */
+const SYSTEM_PROMPT = `You are an expert sports data extraction assistant. Your strict task is to compile a verified JSON list of running races in Israel occurring within the date range and distance filters provided by the user.
 
-**CRITICAL — Exact dates only:**
-- Use Google Search for every race. Search: "[race name] 2026 date", "Israeli marathon 2026", "Jerusalem Marathon 2026 registration"
-- Return ONLY dates you find in web search results. Never guess or use memory.
-- Every date must be YYYY-MM-DD. If you cannot find the exact day, omit that race.
-- Race dates change every year — your training data is outdated. Web search is required.
+CRITICAL INSTRUCTIONS TO PREVENT HALLUCINATIONS:
 
-**Objective:** For the given date range and distances, return every race in Israel that matches. Include: Jerusalem Marathon, Tel Aviv Marathon/Night Run, Dead Sea Marathon, Eilat Desert Marathon, Haifa, Tiberias, Shvoong, Be'er Sheva LightRun, Yarkon Park runs, Mirotz events (Herzliya, Kfar Saba, Haifa, Ra'anana, Holon, Netanya), Sovev Emek, Winner Nesher, regional races. Be comprehensive — 10–20+ when the range spans months.
+1. TARGETED SEARCH REQUIRED: Your training data is outdated. You MUST use Google Search to find the dates for the specified year(s).
+2. USE LOCAL ISRAELI SOURCES: Search specific Israeli race aggregators and timing sites. Use search queries like: "site:shvoong.co.il [YEAR]", "site:4sport.co.il [YEAR]", "site:realtiming.co.il [YEAR]", or "Marathon Israel [YEAR] dates".
+3. VERIFY MAJOR RACES: Specifically search for the official dates of the Tel Aviv Marathon, Jerusalem Marathon, Tiberias Marathon, Dead Sea Marathon, and Eilat Desert Marathon.
+4. STRICT EXCLUSION: If you cannot find a confirmed YYYY-MM-DD date on an official website, news article, or timing portal, DO NOT include the race. Guessing is strictly prohibited.
 
-**Data per race:** race_name, date (YYYY-MM-DD from search), city, distances_available, surface_type, official_website, description.
+DATA REQUIREMENTS:
+- Distances: Only include events offering at least one of: 5K, 10K, 21.1K, 42.2K (or the distances specified by the user).
+- Date Format: YYYY-MM-DD exactly.
 
-**Output:** Strictly JSON with key "races". No extra text. Only include races where you found a date via search.`
+OUTPUT FORMAT:
+Return ONLY a valid JSON object with the key "races". No conversational text before or after the JSON.
+
+Expected format:
+{
+  "races": [
+    {
+      "race_name": "...",
+      "date": "YYYY-MM-DD",
+      "city": "...",
+      "distances_available": ["5K", "10K", ...],
+      "surface_type": "road",
+      "official_website": "https://...",
+      "description": "..."
+    }
+  ]
+}`
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -73,12 +94,12 @@ function buildPrompt(input: RaceSearchInput): string {
   const fromStr = (dateFrom || defaultFrom).slice(0, 10)
   const toStr = (dateTo || defaultTo).slice(0, 10)
 
-  let distStr = 'all distances'
+  let distStr = '5K, 10K, 21.1K, 42.2K'
   if (distances && distances.length > 0) {
     distStr = distances.join(', ')
   }
 
-  return `Search for running races in Israel. DATE RANGE: ${fromStr} to ${toStr} — only include races with a verified date in this range. DISTANCES: ${distStr}. Use Google Search to find exact dates (YYYY-MM-DD) for each race. Return ONLY races where you found the date via web search. Output strictly JSON with key "races".`
+  return `Compile a verified list of running races in Israel occurring between ${fromStr} and ${toStr}. Distances: ${distStr}. Use site:shvoong.co.il, site:4sport.co.il, and site:realtiming.co.il to find confirmed dates. STRICT: Only include races where you found a confirmed YYYY-MM-DD on an official source. Return ONLY valid JSON with key "races".`
 }
 
 function parseJsonSafe(raw: string): { races?: unknown[] } | null {
@@ -114,14 +135,14 @@ function mapToRaceResult(r: Record<string, unknown>): RaceResult {
   return race
 }
 
+const RACE_MODEL = 'gemini-2.5-flash'
+
 export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]> {
   const apiKey = (process.env.AI_RACE_KEY || process.env.AI_API_KEY)?.trim()
-  
   if (!apiKey) {
     throw new Error('AI_RACE_KEY or AI_API_KEY not configured')
   }
 
-  const RACE_MODEL = 'gemini-2.5-flash'
   const url = `${GEMINI_BASE}/models/${RACE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
