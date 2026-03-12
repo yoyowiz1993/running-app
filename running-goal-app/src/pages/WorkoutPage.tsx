@@ -14,7 +14,22 @@ import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
 import { useWorkoutPlayer } from '../lib/useWorkoutPlayer'
-import type { TrainingPlan, Workout, WorkoutType } from '../lib/types'
+import type { TrainingPlan, Workout, WorkoutType, WorkoutStageKind } from '../lib/types'
+
+function getStageTip(kind: WorkoutStageKind, stageIndex: number): string {
+  const tips: Record<WorkoutStageKind, string[]> = {
+    warmup: ['Stay relaxed and ease into it', 'Keep it conversational', 'Let your body warm up naturally'],
+    easy: ['Stay comfortable and controlled', 'Keep the effort light', 'You should be able to hold a conversation'],
+    tempo: ['Find a comfortably hard effort', 'Sustain a steady, controlled pace', 'Not all-out, but purposeful'],
+    interval: ['Give it controlled effort', 'Focus on form during reps', 'Stay strong through each rep'],
+    recovery: ['Breathe and recover', 'Shake it out and relax', 'Get ready for the next effort'],
+    cooldown: ['Gradually bring the heart rate down', 'Let the legs flush out', 'Nice and easy to finish'],
+    race: ['Trust your training', 'Stay focused and smooth', 'Find your rhythm'],
+    rest: ['Rest is part of the plan', 'Recovery matters', 'Recharge for the next session'],
+  }
+  const options = tips[kind] ?? tips.easy
+  return options[stageIndex % options.length]
+}
 
 // ── Branded sync buttons ───────────────────────────────────────────────────
 function StravaButton({ onClick, loading, label }: { onClick: () => void; loading: boolean; label?: string }) {
@@ -145,45 +160,56 @@ function StageProgressRing({
   color,
   glow,
   size = 240,
+  countdownPulse = false,
 }: {
   progress: number
   color: string
   glow: string
   size?: number
+  countdownPulse?: boolean
 }) {
-  const r = size / 2 - 12
+  const r = size / 2 - 14
   const circ = 2 * Math.PI * r
   const filled = Math.min(1, Math.max(0, progress)) * circ
+  const gradientId = `ring-gradient-${color.replace(/[^a-z0-9]/gi, '')}`
 
   return (
-    <svg
+    <motion.svg
       width={size}
       height={size}
       viewBox={`0 0 ${size} ${size}`}
       className="-rotate-90"
-      style={{ filter: `drop-shadow(0 0 12px ${glow})` }}
+      style={{ filter: `drop-shadow(0 0 18px ${glow})` }}
+      animate={countdownPulse ? { filter: [`drop-shadow(0 0 18px ${glow})`, `drop-shadow(0 0 24px ${glow})`, `drop-shadow(0 0 18px ${glow})`] } : undefined}
+      transition={{ duration: 0.8, repeat: countdownPulse ? Infinity : 0 }}
     >
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor={color} stopOpacity={0.9} />
+          <stop offset="100%" stopColor={color} stopOpacity={1} />
+        </linearGradient>
+      </defs>
       <circle
         cx={size / 2}
         cy={size / 2}
         r={r}
         fill="none"
         stroke="rgba(255,255,255,0.06)"
-        strokeWidth="5"
+        strokeWidth="8"
       />
       <motion.circle
         cx={size / 2}
         cy={size / 2}
         r={r}
         fill="none"
-        stroke={color}
-        strokeWidth="5"
+        stroke={`url(#${gradientId})`}
+        strokeWidth="8"
         strokeLinecap="round"
         animate={{ strokeDasharray: `${filled} ${circ}` }}
         transition={{ duration: 0.4, ease: 'linear' }}
         style={{ strokeDasharray: `${filled} ${circ}` }}
       />
-    </svg>
+    </motion.svg>
   )
 }
 
@@ -267,6 +293,27 @@ export function WorkoutPage() {
     setSyncingStrava(false)
   }
 
+  const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('wakeLock' in navigator)) return
+    const wl = (navigator as { wakeLock?: { request: (t: string) => Promise<{ release: () => Promise<void> }> } }).wakeLock
+    if (!wl) return
+
+    if (player.status === 'running') {
+      wl.request('screen').then((sentinel) => {
+        wakeLockRef.current = sentinel
+      }).catch(() => {})
+    } else {
+      wakeLockRef.current?.release().catch(() => {})
+      wakeLockRef.current = null
+    }
+
+    return () => {
+      wakeLockRef.current?.release().catch(() => {})
+      wakeLockRef.current = null
+    }
+  }, [player.status])
+
   useEffect(() => {
     if (player.status === 'finished' && !confettiFiredRef.current) {
       confettiFiredRef.current = true
@@ -307,11 +354,15 @@ export function WorkoutPage() {
 
   return (
     <motion.div
-      className={`min-h-full bg-gradient-to-b ${accent.bg}`}
+      className={`relative min-h-full overflow-hidden bg-gradient-to-b ${accent.bg}`}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
+      <div
+        className="absolute inset-0 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent pointer-events-none workout-bg-animated-layer"
+        aria-hidden
+      />
       <TopBar
         title={workout.title}
         right={
@@ -374,12 +425,30 @@ export function WorkoutPage() {
                 color={accent.ring}
                 glow={accent.glow}
                 size={232}
+                countdownPulse={player.remainingSec <= 10 && player.remainingSec > 0}
               />
-              <div className="absolute flex flex-col items-center">
+              <motion.div
+                className="absolute flex flex-col items-center px-6 py-3 rounded-2xl"
+                animate={
+                  player.status === 'running'
+                    ? {
+                        boxShadow: [
+                          `0 0 20px ${accent.glow}`,
+                          `0 0 35px ${accent.glow}`,
+                          `0 0 20px ${accent.glow}`,
+                        ],
+                      }
+                    : { boxShadow: '0 0 0 transparent' }
+                }
+                transition={player.status === 'running' ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
+              >
                 <motion.div
                   key={player.remainingSec}
                   initial={{ scale: 1.04, opacity: 0.7 }}
-                  animate={{ scale: 1, opacity: 1 }}
+                  animate={{
+                    scale: player.remainingSec <= 10 && player.remainingSec > 0 ? 1.02 : 1,
+                    opacity: 1,
+                  }}
                   transition={{ duration: 0.2 }}
                   className="text-[56px] font-bold tabular-nums tracking-tight text-white leading-none"
                 >
@@ -390,19 +459,49 @@ export function WorkoutPage() {
                     {formatPaceWithTreadmillLabels(player.currentStage.targetPaceSecPerKm)}
                   </div>
                 ) : null}
-              </div>
+                {(player.status === 'running' || player.status === 'paused') &&
+                player.currentStage?.targetPaceSecPerKm &&
+                player.currentStage?.durationSec != null ? (
+                  <div className="mt-1 text-xs text-white/40">
+                    ~
+                    {(
+                      (player.currentStage.durationSec - player.remainingSec) /
+                      player.currentStage.targetPaceSecPerKm
+                    ).toFixed(1)}{' '}
+                    km
+                  </div>
+                ) : null}
+              </motion.div>
             </div>
 
             {/* Stage dots */}
             <StageDots count={workout.stages.length} current={player.stageIndex} />
 
-            {/* Next stage hint */}
+            {/* Next stage hint + coach tip */}
             {player.nextStage ? (
-              <div className="text-xs text-white/40">
-                Next: <span className="text-white/60">{player.nextStage.label}</span>
+              <div className="text-center space-y-1">
+                <div className="text-xs text-white/40">
+                  Next: <span className="text-white/60">{player.nextStage.label}</span>
+                </div>
+                {player.currentStage ? (
+                  <div className="text-[11px] text-white/35">
+                    {getStageTip(player.currentStage.kind, player.stageIndex)}
+                  </div>
+                ) : null}
               </div>
             ) : player.status === 'running' ? (
-              <div className="text-xs text-white/40">Last stage</div>
+              <div className="text-center space-y-1">
+                <div className="text-xs text-white/40">Last stage</div>
+                {player.currentStage ? (
+                  <div className="text-[11px] text-white/35">
+                    {getStageTip(player.currentStage.kind, player.stageIndex)}
+                  </div>
+                ) : null}
+              </div>
+            ) : player.currentStage ? (
+              <div className="text-[11px] text-white/35 text-center">
+                {getStageTip(player.currentStage.kind, player.stageIndex)}
+              </div>
             ) : null}
 
             {/* Controls */}
