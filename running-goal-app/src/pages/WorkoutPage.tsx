@@ -9,7 +9,7 @@ import { TopBar } from '../components/TopBar'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
-import { formatPace, formatPaceWithTreadmillLabels } from '../lib/pace'
+import { formatPace, formatPaceWithTreadmillLabels, secPerKmToKmh } from '../lib/pace'
 import { loadPlan, savePlan, updateWorkout } from '../lib/storage'
 import { supabase } from '../lib/supabase'
 import { formatClock, formatDurationShort } from '../lib/time'
@@ -233,6 +233,28 @@ export function WorkoutPage() {
   const status = workout ? getWorkoutStatus(workout, todayISO) : 'pending'
   const accent = getWorkoutAccent(workout?.type ?? 'easy')
 
+  const totalElapsedSec = useMemo(() => {
+    if (player.status !== 'running' && player.status !== 'paused') return 0
+    const stages = workout?.stages ?? []
+    const completed = stages.slice(0, player.stageIndex).reduce((s, st) => s + st.durationSec, 0)
+    const current = player.currentStage ? player.currentStage.durationSec - player.remainingSec : 0
+    return completed + current
+  }, [workout?.stages, player.stageIndex, player.currentStage, player.remainingSec, player.status])
+
+  const cumulativeDistanceKm = useMemo(() => {
+    if (player.status !== 'running' && player.status !== 'paused') return 0
+    const stages = workout?.stages ?? []
+    let total = 0
+    for (let i = 0; i <= player.stageIndex; i++) {
+      const st = stages[i]
+      if (!st?.targetPaceSecPerKm) continue
+      const stageDuration = st.durationSec
+      const elapsedInStage = i < player.stageIndex ? stageDuration : stageDuration - player.remainingSec
+      total += Math.max(0, elapsedInStage) / st.targetPaceSecPerKm
+    }
+    return total
+  }, [workout?.stages, player.stageIndex, player.remainingSec, player.status])
+
   function markComplete(): void {
     if (!plan || !workout) return
     const updated: Workout = { ...workout, completedAtISO: new Date().toISOString(), missedAtISO: undefined }
@@ -418,7 +440,7 @@ export function WorkoutPage() {
               </AnimatePresence>
             </div>
 
-            {/* Progress ring + countdown */}
+            {/* Progress ring + countdown — timer only in center, no square */}
             <div className="relative flex items-center justify-center">
               <StageProgressRing
                 progress={player.progress}
@@ -427,21 +449,7 @@ export function WorkoutPage() {
                 size={232}
                 countdownPulse={player.remainingSec <= 10 && player.remainingSec > 0}
               />
-              <motion.div
-                className="absolute flex flex-col items-center px-6 py-3 rounded-2xl"
-                animate={
-                  player.status === 'running'
-                    ? {
-                        boxShadow: [
-                          `0 0 20px ${accent.glow}`,
-                          `0 0 35px ${accent.glow}`,
-                          `0 0 20px ${accent.glow}`,
-                        ],
-                      }
-                    : { boxShadow: '0 0 0 transparent' }
-                }
-                transition={player.status === 'running' ? { duration: 2, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.3 }}
-              >
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <motion.div
                   key={player.status === 'finished' ? 'done' : player.remainingSec}
                   initial={{ scale: 1.04, opacity: 0.7 }}
@@ -451,29 +459,44 @@ export function WorkoutPage() {
                   }}
                   transition={{ duration: 0.2 }}
                   className="text-[56px] font-bold tabular-nums tracking-tight text-white leading-none"
+                  style={
+                    player.status === 'running'
+                      ? { filter: `drop-shadow(0 0 12px ${accent.glow})` }
+                      : undefined
+                  }
                 >
                   {player.status === 'finished' ? 'Done' : formatClock(player.remainingSec)}
                 </motion.div>
-                {player.currentStage?.targetPaceSecPerKm ? (
-                  <div className="mt-1.5 text-center text-xs font-medium text-white/50 leading-relaxed max-w-[260px]">
-                    {formatPaceWithTreadmillLabels(player.currentStage.targetPaceSecPerKm)}
-                  </div>
-                ) : null}
-                {(player.status === 'running' || player.status === 'paused') &&
-                player.currentStage?.targetPaceSecPerKm &&
-                player.currentStage?.durationSec != null ? (() => {
-                  const distanceKm = Math.max(
-                    0,
-                    (player.currentStage!.durationSec - player.remainingSec) /
-                      player.currentStage!.targetPaceSecPerKm!
-                  )
-                  return distanceKm >= 0.05 ? (
-                    <div className="mt-1 text-xs text-white/40">
-                      ~{distanceKm.toFixed(1)} km
-                    </div>
-                  ) : null
-                })() : null}
-              </motion.div>
+              </div>
+            </div>
+
+            {/* Metrics strip — below ring */}
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-white/50">
+              {(player.status === 'running' || player.status === 'paused') && totalElapsedSec > 0 ? (
+                <span>{formatClock(totalElapsedSec)} elapsed</span>
+              ) : null}
+              {player.currentStage?.targetPaceSecPerKm ? (
+                <span>
+                  {formatPace(player.currentStage.targetPaceSecPerKm)} · {secPerKmToKmh(player.currentStage.targetPaceSecPerKm).toFixed(1)} km/h
+                </span>
+              ) : null}
+              {(player.status === 'running' || player.status === 'paused') &&
+              player.currentStage?.targetPaceSecPerKm &&
+              player.currentStage?.durationSec != null
+                ? (() => {
+                    const distanceKm = Math.max(
+                      0,
+                      (player.currentStage!.durationSec - player.remainingSec) /
+                        player.currentStage!.targetPaceSecPerKm!
+                    )
+                    return distanceKm >= 0.05 ? (
+                      <span>~{distanceKm.toFixed(1)} km this stage</span>
+                    ) : null
+                  })()
+                : null}
+              {(player.status === 'running' || player.status === 'paused') && cumulativeDistanceKm >= 0.05 ? (
+                <span className="text-white/60 font-medium">~{cumulativeDistanceKm.toFixed(1)} km total</span>
+              ) : null}
             </div>
 
             {/* Stage dots */}
