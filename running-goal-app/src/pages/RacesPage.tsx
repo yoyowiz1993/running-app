@@ -6,14 +6,6 @@ import { Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { searchRaces, type RaceResult } from '../lib/races'
 
-const RADIUS_OPTIONS = [
-  { value: '25', label: '25 km' },
-  { value: '50', label: '50 km' },
-  { value: '100', label: '100 km' },
-  { value: '150', label: '150 km' },
-  { value: '200', label: '200 km' },
-]
-
 const RACE_TYPE_OPTIONS = [
   { value: '', label: 'Any distance' },
   { value: '5K', label: '5K' },
@@ -27,8 +19,6 @@ function todayISO(): string {
 }
 
 export function RacesPage() {
-  const [location, setLocation] = useState('Tel Aviv')
-  const [radiusKm, setRadiusKm] = useState('50')
   const [raceType, setRaceType] = useState('')
   const [dateFrom, setDateFrom] = useState(todayISO())
   const [dateTo, setDateTo] = useState('')
@@ -37,16 +27,10 @@ export function RacesPage() {
   const [error, setError] = useState<string | null>(null)
 
   async function handleSearch() {
-    if (!location.trim() || location.trim().length < 2) {
-      setError('Enter a city or region in Israel (e.g. Tel Aviv, Jerusalem)')
-      return
-    }
     setError(null)
     setSearching(true)
     try {
       const results = await searchRaces({
-        location: location.trim(),
-        radiusKm: Number(radiusKm) || 50,
         dateFrom: dateFrom || undefined,
         dateTo: dateTo || undefined,
         distances: raceType ? [raceType] : undefined,
@@ -78,31 +62,12 @@ export function RacesPage() {
 
           <div className="space-y-3">
             <div>
-              <Label>Location (city or region)</Label>
-              <Input
-                placeholder="e.g. Tel Aviv, Jerusalem, Haifa"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Radius</Label>
-                <Select value={radiusKm} onChange={(e) => setRadiusKm(e.target.value)}>
-                  {RADIUS_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </Select>
-              </div>
-              <div>
-                <Label>Race type</Label>
-                <Select value={raceType} onChange={(e) => setRaceType(e.target.value)}>
-                  {RACE_TYPE_OPTIONS.map((o) => (
-                    <option key={o.value || 'any'} value={o.value}>{o.label}</option>
-                  ))}
-                </Select>
-              </div>
+              <Label>Race type</Label>
+              <Select value={raceType} onChange={(e) => setRaceType(e.target.value)}>
+                {RACE_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value || 'any'} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -212,7 +177,7 @@ export function RacesPage() {
 
         {races.length === 0 && !searching && !error && (
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 text-center text-sm text-white/50">
-            Enter a location and tap <strong className="text-white/70">Search races</strong> to find upcoming races in Israel.
+            Pick dates and optionally a distance, then tap <strong className="text-white/70">Search races</strong> to find races in Israel.
           </div>
         )}
       </div>

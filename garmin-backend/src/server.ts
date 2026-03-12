@@ -267,24 +267,16 @@ app.post('/api/races/search', async (req, res) => {
     return res.status(503).json({ error: 'AI_API_KEY not configured', races: [] })
   }
   const body = req.body as {
-    location?: string
-    radiusKm?: number
     dateFrom?: string
     dateTo?: string
     distances?: string[]
   }
-  const location = String(body?.location ?? '').trim()
-  if (!location || location.length < 2) {
-    return res.status(400).json({ error: 'location is required (city or region in Israel)', races: [] })
-  }
-  const radiusKm = Math.max(10, Math.min(200, Number(body?.radiusKm) || 50))
   const dateFrom = String(body?.dateFrom ?? '').trim().slice(0, 10) || new Date().toISOString().slice(0, 10)
   const dateTo = String(body?.dateTo ?? '').trim().slice(0, 10) || ''
   const distances = Array.isArray(body?.distances) ? body.distances.filter((d): d is string => typeof d === 'string' && d.length > 0) : undefined
 
   try {
-    const input = { location, radiusKm, dateFrom, dateTo, ...(distances && distances.length > 0 ? { distances } : {}) }
-    const races = await searchRaces(input)
+    const races = await searchRaces({ dateFrom, dateTo, distances })
     res.json({ races })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Race search failed'

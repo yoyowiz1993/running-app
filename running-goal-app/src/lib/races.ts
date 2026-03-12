@@ -12,8 +12,6 @@ export type RaceResult = {
 }
 
 export type RaceSearchInput = {
-  location: string
-  radiusKm?: number
   dateFrom?: string
   dateTo?: string
   distances?: string[]
@@ -36,8 +34,6 @@ export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]>
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      location: input.location,
-      radiusKm: input.radiusKm,
       dateFrom: input.dateFrom,
       dateTo: input.dateTo,
       distances: input.distances,

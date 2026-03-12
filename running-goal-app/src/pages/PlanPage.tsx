@@ -38,13 +38,6 @@ const RACE_TYPE_OPTIONS = [
   { value: 'Marathon', label: 'Marathon (42K)' },
 ]
 
-const RADIUS_OPTIONS = [
-  { value: '25', label: '25 km' },
-  { value: '50', label: '50 km' },
-  { value: '100', label: '100 km' },
-  { value: '200', label: '200 km' },
-]
-
 function todayISO(): string {
   return format(startOfDay(new Date()), 'yyyy-MM-dd')
 }
@@ -90,8 +83,6 @@ export function PlanPage() {
   const [goalEntryMode, setGoalEntryMode] = useState<'race' | 'manual' | null>(null)
   const [selectedRace, setSelectedRace] = useState<RaceResult | null>(null)
   const [selectedRaceDistance, setSelectedRaceDistance] = useState<string>('') // when race has multiple distances
-  const [raceLocation, setRaceLocation] = useState('Tel Aviv')
-  const [raceRadius, setRaceRadius] = useState('50')
   const [raceType, setRaceType] = useState('')
   const [raceDateFrom, setRaceDateFrom] = useState(todayISO())
   const [raceDateTo, setRaceDateTo] = useState('')
@@ -361,30 +352,12 @@ export function PlanPage() {
                     <div className="text-base font-semibold text-white">Find your race</div>
                     <div className="mt-4 space-y-3">
                       <div>
-                        <Label>Location</Label>
-                        <Input
-                          placeholder="e.g. Tel Aviv, Jerusalem"
-                          value={raceLocation}
-                          onChange={(e) => setRaceLocation(e.target.value)}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <Label>Radius</Label>
-                          <Select value={raceRadius} onChange={(e) => setRaceRadius(e.target.value)}>
-                            {RADIUS_OPTIONS.map((o) => (
-                              <option key={o.value} value={o.value}>{o.label}</option>
-                            ))}
-                          </Select>
-                        </div>
-                        <div>
-                          <Label>Race type</Label>
-                          <Select value={raceType} onChange={(e) => setRaceType(e.target.value)}>
-                            {RACE_TYPE_OPTIONS.map((o) => (
-                              <option key={o.value || 'any'} value={o.value}>{o.label}</option>
-                            ))}
-                          </Select>
-                        </div>
+                        <Label>Race type</Label>
+                        <Select value={raceType} onChange={(e) => setRaceType(e.target.value)}>
+                          {RACE_TYPE_OPTIONS.map((o) => (
+                            <option key={o.value || 'any'} value={o.value}>{o.label}</option>
+                          ))}
+                        </Select>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
@@ -399,12 +372,9 @@ export function PlanPage() {
                       <Button
                         className="w-full"
                         onClick={async () => {
-                          if (!raceLocation.trim()) { setError('Enter location'); return }
                           setError(null); setRaceSearching(true)
                           try {
                             const results = await searchRaces({
-                              location: raceLocation.trim(),
-                              radiusKm: Number(raceRadius) || 50,
                               dateFrom: raceDateFrom || undefined,
                               dateTo: raceDateTo || undefined,
                               distances: raceType ? [raceType] : undefined,
