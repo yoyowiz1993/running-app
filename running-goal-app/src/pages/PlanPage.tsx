@@ -5,6 +5,9 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
+import { DurationWheelPicker } from '../components/DurationWheelPicker'
+import { NumberWheelPicker } from '../components/NumberWheelPicker'
+import { PaceWheelPicker } from '../components/PaceWheelPicker'
 import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { clampPace } from '../lib/pace'
@@ -224,37 +227,21 @@ export function PlanPage() {
                 </div>
               )}
 
-              {/* Race finish time → auto-pace */}
+              {/* Goal time → auto-pace */}
               <div>
-                <Label>Target finish time</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="0h"
-                      value={raceHours}
-                      onChange={(e) => setRaceHours(e.target.value)}
-                    />
-                    <Help>Hours</Help>
-                  </div>
-                  <div>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="50m"
-                      value={raceMinutes}
-                      onChange={(e) => setRaceMinutes(e.target.value)}
-                    />
-                    <Help>Minutes</Help>
-                  </div>
-                  <div>
-                    <Input
-                      inputMode="numeric"
-                      placeholder="00s"
-                      value={raceSeconds}
-                      onChange={(e) => setRaceSeconds(e.target.value)}
-                    />
-                    <Help>Seconds</Help>
-                  </div>
+                <Label>Goal time</Label>
+                <div className="mt-1">
+                  <DurationWheelPicker
+                    hours={raceHours}
+                    minutes={raceMinutes}
+                    seconds={raceSeconds}
+                    onChange={({ hours, minutes, seconds }) => {
+                      setRaceHours(hours)
+                      setRaceMinutes(minutes)
+                      setRaceSeconds(seconds)
+                    }}
+                    maxHours={6}
+                  />
                 </div>
                 {calculatedPaceSec ? (
                   <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1.5">
@@ -266,12 +253,24 @@ export function PlanPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label>Start training</Label>
-                  <Input type="date" value={planStartDate} onChange={(e) => setPlanStartDate(e.target.value)} />
+                  <Label>Pick start date</Label>
+                  <Input
+                    type="date"
+                    value={planStartDate}
+                    onChange={(e) => setPlanStartDate(e.target.value)}
+                    min={todayISO()}
+                    title="Start training"
+                  />
                 </div>
                 <div>
-                  <Label>Race day</Label>
-                  <Input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} />
+                  <Label>Pick race day</Label>
+                  <Input
+                    type="date"
+                    value={raceDate}
+                    onChange={(e) => setRaceDate(e.target.value)}
+                    min={planStartDate || todayISO()}
+                    title="Race day"
+                  />
                 </div>
               </div>
 
@@ -306,20 +305,42 @@ export function PlanPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
                   <Label>Easy pace</Label>
-                  <Input inputMode="numeric" value={currentPaceText} onChange={(e) => setCurrentPaceText(e.target.value)} placeholder="6:30" />
+                  <div className="mt-1">
+                    <PaceWheelPicker value={currentPaceText} onChange={setCurrentPaceText} />
+                  </div>
                   <Help>min:sec/km</Help>
                 </div>
                 <div>
                   <Label>Weekly km</Label>
-                  <Input inputMode="decimal" value={currentWeeklyKm} onChange={(e) => setCurrentWeeklyKm(e.target.value)} placeholder="20" />
+                  <div className="mt-1">
+                    <NumberWheelPicker
+                      min={0}
+                      max={150}
+                      step={1}
+                      value={currentWeeklyKm}
+                      onChange={setCurrentWeeklyKm}
+                      suffix=" km"
+                      allowEmpty
+                    />
+                  </div>
                   <Help>Recent avg</Help>
                 </div>
                 <div>
                   <Label>Longest run</Label>
-                  <Input inputMode="decimal" value={longestRecentRunKm} onChange={(e) => setLongestRecentRunKm(e.target.value)} placeholder="8" />
+                  <div className="mt-1">
+                    <NumberWheelPicker
+                      min={0}
+                      max={42}
+                      step={1}
+                      value={longestRecentRunKm}
+                      onChange={setLongestRecentRunKm}
+                      suffix=" km"
+                      allowEmpty
+                    />
+                  </div>
                   <Help>km</Help>
                 </div>
               </div>
