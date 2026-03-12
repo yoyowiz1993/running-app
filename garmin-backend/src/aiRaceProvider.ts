@@ -35,11 +35,10 @@ Rules:
 - Date format: YYYY-MM-DD.
 - Distances: use standard names like "5K", "10K", "Half Marathon", "Marathon".
 
-CRITICAL — Date accuracy:
-- Only include a race if you are confident of the EXACT date. Wrong dates harm users who plan training around race day.
-- Your training data may be outdated. If you are unsure about a date (e.g. Jerusalem Marathon is often late March but the exact day varies by year), prefer OMITTING the race over guessing.
-- When in doubt, return an empty races array or fewer races. Accuracy over completeness.
-- Do NOT approximate or infer dates from patterns (e.g. "usually in March"). Only include when you have the exact date.`
+Date accuracy:
+- Include races when you know they exist in the area and timeframe. Use the best date you have — from official sources, announcements, or the race's typical annual schedule (e.g. Jerusalem Marathon is typically late March).
+- For recurring races, using the usual month/week is acceptable (e.g. "late March" → use a date in that window). Users are reminded to verify on the registration site.
+- Do not invent races or completely fabricated dates. When you truly have no basis for a date (e.g. a race you've never heard of), omit it.`
 
 function buildPrompt(input: RaceSearchInput): string {
   const { location, radiusKm = 50, dateFrom, dateTo, distances } = input
@@ -58,7 +57,7 @@ function buildPrompt(input: RaceSearchInput): string {
 
   let distPart = ''
   if (distances && distances.length > 0) {
-    distPart = `Prefer these distances: ${distances.join(', ')}.`
+    distPart = `Include races that offer these distances: ${distances.join(', ')}.`
   }
 
   return `List running races in Israel near or in "${loc}" (city or region), within roughly ${radiusKm} km.
