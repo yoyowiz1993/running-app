@@ -62,6 +62,7 @@ const USDA_BASE = 'https://api.nal.usda.gov/fdc/v1'
 
 const aiApiKey = process.env.AI_API_KEY
 const aiMealApiKey = process.env.AI_MEAL_API_KEY || aiApiKey
+const aiRaceApiKey = process.env.AI_RACE_KEY || aiApiKey
 
 app.post('/api/programs/create', async (req, res) => {
   if (!aiApiKey?.trim()) {
@@ -263,8 +264,8 @@ app.post('/api/nutrition/suggest-meals', async (req, res) => {
 })
 
 app.post('/api/races/search', async (req, res) => {
-  if (!aiApiKey?.trim()) {
-    return res.status(503).json({ error: 'AI_API_KEY not configured', races: [] })
+  if (!aiRaceApiKey?.trim()) {
+    return res.status(503).json({ error: 'AI_RACE_KEY or AI_API_KEY not configured', races: [] })
   }
   const body = req.body as {
     dateFrom?: string
