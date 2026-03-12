@@ -14,6 +14,7 @@ import { clampPace } from '../lib/pace'
 import { createProgram } from '../lib/programs'
 import {
   deletePlan,
+  flushCloudSync,
   loadActivePlan,
   loadPlans,
   saveGoal,
@@ -141,14 +142,9 @@ export function PlanPage() {
           ...(Number.isFinite(lrr) && lrr > 0 ? { longestRecentRunKm: lrr } : {}),
         },
       })
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'PlanPage.tsx:beforeSavePlan',message:'about to savePlan',data:{newPlanId:newPlan?.id},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       savePlan(newPlan)
+      await flushCloudSync()
       const afterPlans = loadPlans()
-      // #region agent log
-      fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'PlanPage.tsx:afterSavePlan',message:'after savePlan',data:{loadPlansLength:afterPlans.length},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       setPlan(newPlan)
       setPlans(afterPlans)
       if (isFirstPlan) {
@@ -168,10 +164,11 @@ export function PlanPage() {
     setPlans(loadPlans())
   }
 
-  function onDeletePlan(p: TrainingPlan): void {
+  async function onDeletePlan(p: TrainingPlan): Promise<void> {
     if (!window.confirm(`Delete "${p.planName ?? 'this plan'}"?`)) return
     setDeletingId(p.id)
     deletePlan(p.id)
+    await flushCloudSync()
     setPlan(loadActivePlan())
     setPlans(loadPlans())
     setDeletingId(null)

@@ -65,11 +65,13 @@ export default function App() {
       setChecking(false)
     })()
 
-    const unsub = onAuthChange((_event, s) => {
+    const unsub = onAuthChange((event, s) => {
       setSession(s)
       if (s?.user.id) {
         setCloudUserId(s.user.id)
-        void hydrateLocalFromCloud(s.user.id)
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          void hydrateLocalFromCloud(s.user.id)
+        }
       } else {
         setCloudUserId(null)
       }

@@ -56,9 +56,6 @@ export function loadPlans(): TrainingPlan[] {
 
 export function savePlans(plans: TrainingPlan[]): void {
   localStorage.setItem(KEY_PLANS, JSON.stringify(plans))
-  // #region agent log
-  fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'storage.ts:savePlans',message:'savePlans called',data:{plansLength:plans.length,currentUserId:currentUserId!=null},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-  // #endregion
   scheduleCloudSync()
 }
 
@@ -173,9 +170,6 @@ async function pushLocalStateToCloud(): Promise<void> {
   if (!currentUserId || !supabase) return
   const goal = loadGoal()
   const plans = loadPlans()
-  // #region agent log
-  fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'storage.ts:pushStart',message:'pushLocalStateToCloud start',data:{plansLength:plans.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-  // #endregion
   const activePlanId = loadActivePlanId()
   const plan = loadActivePlan()
 
@@ -195,9 +189,6 @@ async function pushLocalStateToCloud(): Promise<void> {
   const { error } = await supabase.from('user_state').upsert(payload as Record<string, unknown>, { onConflict: 'user_id' })
 
   if (error) {
-    // #region agent log
-    fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'storage.ts:pushError',message:'Cloud sync failed',data:{errorMessage:error.message},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
     console.warn('Cloud sync failed:', error.message)
   }
 }
@@ -205,9 +196,6 @@ async function pushLocalStateToCloud(): Promise<void> {
 export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (!supabase) return
   currentUserId = userId
-  // #region agent log
-  fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'storage.ts:hydrateStart',message:'hydrateLocalFromCloud start',data:{userId},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
 
   const { data, error } = await supabase
     .from('user_state')
@@ -222,9 +210,6 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
 
   // Now safe to clear and restore (prevents data from previous user bleeding through)
   clearLocalKeys()
-  // #region agent log
-  fetch('http://127.0.0.1:7441/ingest/4b69b535-97b9-440a-bed6-753d486e4222',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8f3164'},body:JSON.stringify({sessionId:'8f3164',location:'storage.ts:hydrateAfterClear',message:'hydrate cleared local',data:{cloudPlansLength:Array.isArray(data?.plans)?(data.plans as unknown[]).length:0,hasData:!!data},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-  // #endregion
 
   if (!data) {
     return // Brand-new user, localStorage already cleared

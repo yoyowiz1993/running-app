@@ -10,6 +10,7 @@ import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
 import { formatPaceWithSpeed } from '../lib/pace'
 import {
+  flushCloudSync,
   loadActivePlan,
   loadPlans,
   savePlan,
@@ -206,7 +207,7 @@ export function CalendarPage() {
     })
   }
 
-  function toggleComplete(w: Workout): void {
+  async function toggleComplete(w: Workout): Promise<void> {
     if (!plan) return
     const updated: Workout = {
       ...w,
@@ -214,6 +215,7 @@ export function CalendarPage() {
     }
     const nextPlan = updateWorkout(plan, updated)
     savePlan(nextPlan)
+    await flushCloudSync()
     setPlan(nextPlan)
   }
 
@@ -227,6 +229,7 @@ export function CalendarPage() {
     const patched = applyPushResults(targets, results)
     const nextPlan = updateWorkouts(plan, patched)
     savePlan(nextPlan)
+    await flushCloudSync()
     setPlan(nextPlan)
     setSyncingAll(false)
   }
@@ -249,6 +252,7 @@ export function CalendarPage() {
       const updatedWorkouts = applyStravaMatchesToWorkouts(plan.workouts, matches)
       const nextPlan = updateWorkouts(plan, updatedWorkouts)
       savePlan(nextPlan)
+      await flushCloudSync()
       setPlan(nextPlan)
       setStravaMessage(`Synced ${matches.size} workout${matches.size !== 1 ? 's' : ''} from Strava.`)
     } catch (err) {
