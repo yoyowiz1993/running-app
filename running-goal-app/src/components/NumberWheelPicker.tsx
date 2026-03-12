@@ -33,7 +33,7 @@ export function NumberWheelPicker({
   const displayValue = value === '' && allowEmpty ? '' : value
 
   return (
-    <div className="rounded-xl border border-white/10 bg-black/30 p-2">
+    <div className="w-[72px] rounded-lg border border-white/10 bg-black/30 p-1.5">
       <WheelColumn
         options={options}
         value={displayValue}

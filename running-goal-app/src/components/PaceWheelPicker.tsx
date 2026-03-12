@@ -56,7 +56,7 @@ export function PaceWheelPicker({ value, onChange }: PaceWheelPickerProps) {
   }
 
   return (
-    <div className="flex gap-1 rounded-xl border border-white/10 bg-black/30 p-2">
+    <div className="flex w-fit max-w-[140px] gap-0.5 rounded-lg border border-white/10 bg-black/30 p-1.5">
       <WheelColumn
         options={MINUTES_OPTIONS}
         value={minutes}

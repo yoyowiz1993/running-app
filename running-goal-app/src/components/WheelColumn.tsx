@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from 'react'
 
-export const ROW_HEIGHT = 40
-const VISIBLE_ROWS = 5
+export const ROW_HEIGHT = 32
+const VISIBLE_ROWS = 3
 export const COLUMN_HEIGHT = ROW_HEIGHT * VISIBLE_ROWS
 const PADDING = ROW_HEIGHT * 2 // so first/last item can scroll to center
 

@@ -1,6 +1,6 @@
 import confetti from 'canvas-confetti'
 import { format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
-import { Activity, ChevronRight, Flag, List, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, List, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -41,15 +41,6 @@ function formatPaceFromSec(secPerKm: number): string {
   return `${m}:${String(s).padStart(2, '0')}/km`
 }
 
-function SectionLabel({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-      <span className="text-emerald-400">{icon}</span>
-      <span className="text-xs font-semibold uppercase tracking-wider text-white/40">{text}</span>
-    </div>
-  )
-}
-
 export function PlanPage() {
   const nav = useNavigate()
   const [plan, setPlan] = useState<TrainingPlan | null>(() => loadActivePlan())
@@ -79,6 +70,7 @@ export function PlanPage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [wizardStep, setWizardStep] = useState(0) // 0 = list, 1–6 = create steps
 
   const distanceKm = distancePreset === 'custom'
     ? customDistance
@@ -185,195 +177,77 @@ export function PlanPage() {
     setDeletingId(null)
   }
 
+  function canProceedFromStep(step: number): boolean {
+    if (step === 1) {
+      const d = Number(distanceKm)
+      return Number.isFinite(d) && d > 0
+    }
+    if (step === 2) {
+      const h = Number(raceHours || 0)
+      const m = Number(raceMinutes || 0)
+      const s = Number(raceSeconds || 0)
+      return h * 3600 + m * 60 + s > 0
+    }
+    if (step === 3) return !!raceDate && isValid(parseISO(raceDate))
+    if (step === 4) {
+      const start = parseISO(planStartDate)
+      const end = parseISO(raceDate)
+      return !!planStartDate && isValid(start) && isValid(end) && !isAfter(start, end)
+    }
+    return true // steps 5 and 6
+  }
+
+  function handleNext(): void {
+    setError(null)
+    if (!canProceedFromStep(wizardStep)) {
+      if (wizardStep === 1) setError('Select or enter a valid distance.')
+      else if (wizardStep === 2) setError('Set your goal finish time.')
+      else if (wizardStep === 3) setError('Pick a race day.')
+      else if (wizardStep === 4) setError('Pick a start date on or before race day.')
+      return
+    }
+    setWizardStep((s) => s + 1)
+  }
+
+  const totalSteps = 6
+
   return (
     <div className="min-h-full bg-gradient-to-b from-[#070b14] via-[#070b14] to-[#041a14]">
-      <TopBar title="Training Plan" />
+      <TopBar
+        title={wizardStep === 0 ? 'Training Plan' : `Step ${wizardStep} of ${totalSteps}`}
+        right={
+          wizardStep > 0 ? (
+            <Button
+              variant="ghost"
+              onClick={() => setWizardStep((s) => (s === 1 ? 0 : s - 1))}
+              className="text-white/80"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+          ) : undefined
+        }
+      />
 
       <div className="safe-area-px mx-auto w-full max-w-md px-4 pb-28 pt-5 space-y-4">
 
-        {/* ── Create form ── */}
-        <Card className="p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-emerald-500">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <div className="text-base font-bold text-white">Generate AI plan</div>
-              <div className="text-xs text-white/40">Personalised training program</div>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-4">
-            {/* Race info */}
-            <div className="space-y-3">
-              <SectionLabel icon={<Flag className="h-3.5 w-3.5" />} text="Race details" />
-
-              {/* Distance */}
-              <div>
-                <Label>Race distance</Label>
-                <Select
-                  value={distancePreset}
-                  onChange={(e) => { setDistancePreset(e.target.value); setCustomDistance('') }}
-                >
-                  <option value="" disabled>Select distance…</option>
-                  {CLASSIC_DISTANCES.map((d) => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </Select>
-              </div>
-
-              {distancePreset === 'custom' && (
-                <div>
-                  <Label>Custom distance (km)</Label>
-                  <Input
-                    inputMode="decimal"
-                    value={customDistance}
-                    onChange={(e) => setCustomDistance(e.target.value)}
-                    placeholder="e.g. 8"
-                  />
-                </div>
-              )}
-
-              {/* Goal time → auto-pace */}
-              <div>
-                <Label>Goal time</Label>
-                <div className="mt-1">
-                  <DurationWheelPicker
-                    hours={raceHours}
-                    minutes={raceMinutes}
-                    seconds={raceSeconds}
-                    onChange={({ hours, minutes, seconds }) => {
-                      setRaceHours(hours)
-                      setRaceMinutes(minutes)
-                      setRaceSeconds(seconds)
-                    }}
-                    maxHours={6}
-                  />
-                </div>
-                {calculatedPaceSec ? (
-                  <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1.5">
-                    <span className="text-xs text-white/50">Calculated pace:</span>
-                    <span className="text-sm font-semibold text-emerald-300">{formatPaceFromSec(calculatedPaceSec)}</span>
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Pick start date</Label>
-                  <Input
-                    type="date"
-                    value={planStartDate}
-                    onChange={(e) => setPlanStartDate(e.target.value)}
-                    min={todayISO()}
-                    title="Start training"
-                  />
+        {wizardStep === 0 ? (
+          <>
+            <Card className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-emerald-500">
+                  <Sparkles className="h-4 w-4 text-white" />
                 </div>
                 <div>
-                  <Label>Pick race day</Label>
-                  <Input
-                    type="date"
-                    value={raceDate}
-                    onChange={(e) => setRaceDate(e.target.value)}
-                    min={planStartDate || todayISO()}
-                    title="Race day"
-                  />
+                  <div className="text-base font-bold text-white">Generate AI plan</div>
+                  <div className="text-xs text-white/40">Personalised training program</div>
                 </div>
               </div>
+              <Button size="lg" className="mt-5 w-full" onClick={() => setWizardStep(1)}>
+                <Plus className="h-5 w-5" /> Create new plan
+              </Button>
+            </Card>
 
-              <div>
-                <Label>Plan name <span className="text-white/30 font-normal">(optional)</span></Label>
-                <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Spring 10k" />
-              </div>
-            </div>
-
-            {/* Runner profile */}
-            <div className="space-y-3">
-              <SectionLabel icon={<Activity className="h-3.5 w-3.5" />} text="About you" />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Level</Label>
-                  <Select value={fitnessLevel} onChange={(e) => setFitnessLevel(e.target.value as 'beginner' | 'intermediate' | 'advanced')}>
-                    <option value="beginner">Beginner</option>
-                    <option value="intermediate">Intermediate</option>
-                    <option value="advanced">Advanced</option>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Days / week</Label>
-                  <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
-                    <option value="3">3 days</option>
-                    <option value="4">4 days</option>
-                    <option value="5">5 days</option>
-                    <option value="6">6 days</option>
-                    <option value="7">7 days</option>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
-                  <Label>Easy pace</Label>
-                  <div className="mt-1">
-                    <PaceWheelPicker value={currentPaceText} onChange={setCurrentPaceText} />
-                  </div>
-                  <Help>min:sec/km</Help>
-                </div>
-                <div>
-                  <Label>Weekly km</Label>
-                  <div className="mt-1">
-                    <NumberWheelPicker
-                      min={0}
-                      max={150}
-                      step={1}
-                      value={currentWeeklyKm}
-                      onChange={setCurrentWeeklyKm}
-                      suffix=" km"
-                      allowEmpty
-                    />
-                  </div>
-                  <Help>Recent avg</Help>
-                </div>
-                <div>
-                  <Label>Longest run</Label>
-                  <div className="mt-1">
-                    <NumberWheelPicker
-                      min={0}
-                      max={42}
-                      step={1}
-                      value={longestRecentRunKm}
-                      onChange={setLongestRecentRunKm}
-                      suffix=" km"
-                      allowEmpty
-                    />
-                  </div>
-                  <Help>km</Help>
-                </div>
-              </div>
-            </div>
-
-            {error ? (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
-                {error}
-              </div>
-            ) : null}
-
-            <Button size="lg" className="w-full" onClick={() => void onCreatePlan()} disabled={creating}>
-              {creating ? (
-                <>
-                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  Generating plan...
-                </>
-              ) : (
-                <><Plus className="h-5 w-5" /> Generate AI plan</>
-              )}
-            </Button>
-          </div>
-        </Card>
-
-        {/* ── Plan list ── */}
-        {plans.length > 0 ? (
+            {plans.length > 0 ? (
           <Card className="p-4">
             <div className="flex items-center gap-2">
               <List className="h-4 w-4 text-emerald-400" />
@@ -423,7 +297,192 @@ export function PlanPage() {
               })}
             </div>
           </Card>
-        ) : null}
+            ) : null}
+          </>
+        ) : (
+          <Card className="p-5">
+            {wizardStep === 1 && (
+              <>
+                <div className="text-base font-semibold text-white">Pick your race distance</div>
+                <div className="mt-4 space-y-3">
+                  <Label>Race distance</Label>
+                  <Select
+                    value={distancePreset}
+                    onChange={(e) => { setDistancePreset(e.target.value); setCustomDistance('') }}
+                  >
+                    <option value="" disabled>Select distance…</option>
+                    {CLASSIC_DISTANCES.map((d) => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </Select>
+                  {distancePreset === 'custom' && (
+                    <div>
+                      <Label>Custom distance (km)</Label>
+                      <Input
+                        inputMode="decimal"
+                        value={customDistance}
+                        onChange={(e) => setCustomDistance(e.target.value)}
+                        placeholder="e.g. 8"
+                      />
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {wizardStep === 2 && (
+              <>
+                <div className="text-base font-semibold text-white">Set your goal finish time</div>
+                <div className="mt-4 space-y-3">
+                  <Label>Goal time</Label>
+                  <div className="mt-1">
+                    <DurationWheelPicker
+                      hours={raceHours}
+                      minutes={raceMinutes}
+                      seconds={raceSeconds}
+                      onChange={({ hours, minutes, seconds }) => {
+                        setRaceHours(hours)
+                        setRaceMinutes(minutes)
+                        setRaceSeconds(seconds)
+                      }}
+                      maxHours={6}
+                    />
+                  </div>
+                  {calculatedPaceSec ? (
+                    <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1.5">
+                      <span className="text-xs text-white/50">Calculated pace:</span>
+                      <span className="text-sm font-semibold text-emerald-300">{formatPaceFromSec(calculatedPaceSec)}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+
+            {wizardStep === 3 && (
+              <>
+                <div className="text-base font-semibold text-white">When is race day?</div>
+                <div className="mt-4">
+                  <Label>Pick race day</Label>
+                  <Input
+                    type="date"
+                    value={raceDate}
+                    onChange={(e) => setRaceDate(e.target.value)}
+                    min={todayISO()}
+                    title="Race day"
+                  />
+                </div>
+              </>
+            )}
+
+            {wizardStep === 4 && (
+              <>
+                <div className="text-base font-semibold text-white">When do you start training?</div>
+                <div className="mt-4">
+                  <Label>Pick start date</Label>
+                  <Input
+                    type="date"
+                    value={planStartDate}
+                    onChange={(e) => setPlanStartDate(e.target.value)}
+                    min={todayISO()}
+                    max={raceDate || undefined}
+                    title="Start training"
+                  />
+                </div>
+              </>
+            )}
+
+            {wizardStep === 5 && (
+              <>
+                <div className="text-base font-semibold text-white">Name your plan</div>
+                <div className="mt-4">
+                  <Label>Plan name <span className="text-white/30 font-normal">(optional)</span></Label>
+                  <Input value={planName} onChange={(e) => setPlanName(e.target.value)} placeholder="e.g. Spring 10k" />
+                </div>
+              </>
+            )}
+
+            {wizardStep === 6 && (
+              <>
+                <div className="text-base font-semibold text-white">About you</div>
+                <div className="mt-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Level</Label>
+                      <Select value={fitnessLevel} onChange={(e) => setFitnessLevel(e.target.value as 'beginner' | 'intermediate' | 'advanced')}>
+                        <option value="beginner">Beginner</option>
+                        <option value="intermediate">Intermediate</option>
+                        <option value="advanced">Advanced</option>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Days / week</Label>
+                      <Select value={daysPerWeek} onChange={(e) => setDaysPerWeek(e.target.value)}>
+                        <option value="3">3 days</option>
+                        <option value="4">4 days</option>
+                        <option value="5">5 days</option>
+                        <option value="6">6 days</option>
+                        <option value="7">7 days</option>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <div>
+                      <Label>Easy pace</Label>
+                      <div className="mt-1">
+                        <PaceWheelPicker value={currentPaceText} onChange={setCurrentPaceText} />
+                      </div>
+                      <Help>min:sec/km</Help>
+                    </div>
+                    <div>
+                      <Label>Weekly km</Label>
+                      <div className="mt-1">
+                        <NumberWheelPicker min={0} max={150} step={1} value={currentWeeklyKm} onChange={setCurrentWeeklyKm} suffix=" km" allowEmpty />
+                      </div>
+                      <Help>Recent avg</Help>
+                    </div>
+                    <div>
+                      <Label>Longest run</Label>
+                      <div className="mt-1">
+                        <NumberWheelPicker min={0} max={42} step={1} value={longestRecentRunKm} onChange={setLongestRecentRunKm} suffix=" km" allowEmpty />
+                      </div>
+                      <Help>km</Help>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {error ? (
+              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-200">
+                {error}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex gap-3">
+              {wizardStep < 6 ? (
+                <Button size="lg" className="flex-1" onClick={handleNext}>
+                  Next
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="flex-1"
+                  onClick={() => void onCreatePlan()}
+                  disabled={creating}
+                >
+                  {creating ? (
+                    <>
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      Generating...
+                    </>
+                  ) : (
+                    <><Plus className="h-5 w-5" /> Generate AI plan</>
+                  )}
+                </Button>
+              )}
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   )

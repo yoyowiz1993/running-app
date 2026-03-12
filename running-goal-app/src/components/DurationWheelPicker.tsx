@@ -34,7 +34,7 @@ export function DurationWheelPicker({
   const secondsOptions = buildMinutesOrSecondsOptions()
 
   return (
-    <div className="flex gap-1 rounded-xl border border-white/10 bg-black/30 p-2">
+    <div className="flex w-fit max-w-full gap-1 rounded-xl border border-white/10 bg-black/30 p-1.5">
       <WheelColumn
         options={hoursOptions}
         value={hours}
