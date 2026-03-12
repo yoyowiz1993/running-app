@@ -155,6 +155,17 @@ function scheduleCloudSync(): void {
   }, 250)
 }
 
+/** Push current local state to cloud immediately. Used before sign-out so plans are saved before we clear. */
+export async function flushCloudSync(): Promise<void> {
+  if (syncTimer !== null) {
+    window.clearTimeout(syncTimer)
+    syncTimer = null
+  }
+  if (currentUserId && supabase) {
+    await pushLocalStateToCloud()
+  }
+}
+
 async function pushLocalStateToCloud(): Promise<void> {
   if (!currentUserId || !supabase) return
   const goal = loadGoal()
