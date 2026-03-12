@@ -1,3 +1,4 @@
+import confetti from 'canvas-confetti'
 import { format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
 import { Activity, ChevronRight, Flag, List, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -129,6 +130,7 @@ export function PlanPage() {
     const cwk = Number(currentWeeklyKm)
     const lrr = Number(longestRecentRunKm)
 
+    const isFirstPlan = plans.length === 0
     setCreating(true)
     try {
       const { plan: newPlan } = await createProgram({
@@ -147,6 +149,9 @@ export function PlanPage() {
       savePlan(newPlan)
       setPlan(newPlan)
       setPlans(loadPlans())
+      if (isFirstPlan) {
+        void confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } })
+      }
       nav('/calendar')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create program.')

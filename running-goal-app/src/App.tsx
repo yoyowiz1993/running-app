@@ -10,9 +10,10 @@ import { PlanPage } from './pages/PlanPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkoutPage } from './pages/WorkoutPage'
 import { AuthPage } from './pages/AuthPage'
+import { OnboardingPage } from './pages/OnboardingPage'
 import { getSession, onAuthChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
-import { hydrateLocalFromCloud, setCloudUserId } from './lib/storage'
+import { hydrateLocalFromCloud, loadOnboardingComplete, loadPlans, setCloudUserId } from './lib/storage'
 
 function Shell() {
   const loc = useLocation()
@@ -47,6 +48,7 @@ function Shell() {
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [checking, setChecking] = useState(true)
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -99,9 +101,19 @@ export default function App() {
     return <AuthPage />
   }
 
+  const plans = loadPlans()
+  const onboardingComplete = loadOnboardingComplete()
+  const showOnboarding = plans.length === 0 && !onboardingComplete && !onboardingDismissed
+
   return (
     <HashRouter>
-      <Shell />
+      {showOnboarding ? (
+        <Routes>
+          <Route path="*" element={<OnboardingPage onComplete={() => setOnboardingDismissed(true)} />} />
+        </Routes>
+      ) : (
+        <Shell />
+      )}
     </HashRouter>
   )
 }

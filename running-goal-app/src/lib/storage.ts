@@ -7,6 +7,7 @@ const KEY_GOAL = 'runningPlan.goal.v1'
 const KEY_PLAN = 'runningPlan.plan.v1'
 const KEY_PLANS = 'runningPlan.plans.v2'
 const KEY_ACTIVE_PLAN_ID = 'runningPlan.activePlanId.v2'
+const KEY_ONBOARDING = 'runningPlan.onboardingComplete.v1'
 let currentUserId: string | null = null
 let syncTimer: number | null = null
 
@@ -109,6 +110,16 @@ function clearLocalKeys(): void {
   localStorage.removeItem('nutrition.goals')
   // Clear session suggestions
   sessionStorage.removeItem('nutrition.suggestions.session')
+  localStorage.removeItem(KEY_ONBOARDING)
+}
+
+export function loadOnboardingComplete(): boolean {
+  return localStorage.getItem(KEY_ONBOARDING) === 'true'
+}
+
+export function setOnboardingComplete(): void {
+  localStorage.setItem(KEY_ONBOARDING, 'true')
+  scheduleCloudSync()
 }
 
 export function clearAllData(): void {
@@ -152,12 +163,14 @@ async function pushLocalStateToCloud(): Promise<void> {
   const plan = loadActivePlan()
 
   const nutritionGoals = loadNutritionGoals()
+  const onboardingComplete = loadOnboardingComplete()
   const payload: Record<string, unknown> = {
     user_id: currentUserId,
     goal,
     plan,
     updated_at: new Date().toISOString(),
     nutrition_goals: nutritionGoals,
+    onboarding_complete: onboardingComplete,
   }
   if (plans.length > 0) payload.plans = plans
   if (activePlanId) payload.active_plan_id = activePlanId
@@ -191,6 +204,10 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (!data) {
     // Brand-new user — localStorage is already empty, nothing to push.
     return
+  }
+
+  if (data.onboarding_complete === true) {
+    localStorage.setItem(KEY_ONBOARDING, 'true')
   }
 
   if (data.goal) localStorage.setItem(KEY_GOAL, JSON.stringify(data.goal))
