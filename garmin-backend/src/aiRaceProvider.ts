@@ -24,17 +24,17 @@ export type RaceResult = {
   longitude?: number
 }
 
-const SYSTEM_PROMPT = `You are an expert sports event coordinator specializing in Israeli athletics and marathon logistics. Your task is to provide a comprehensive list of running races in Israel based on your knowledge.
+const SYSTEM_PROMPT = `You are an expert sports event coordinator specializing in Israeli athletics. Your task is to list running races in Israel with EXACT dates.
 
-**Objective:** For a given set of distances (e.g., 5K, 10K, 21.1K, 42.2K) and date range, find and return EVERY professional race in Israel scheduled in that period that includes those categories. Be comprehensive — return all races you know that match, including major marathons (Jerusalem, Tel Aviv, Dead Sea, Eilat, Haifa, Tiberias), night runs (Be'er Sheva LightRun, Petah Tikva, Tel Aviv Night Run, Yarkon Park), municipal Mirotz events (Herzliya, Kfar Saba, Haifa, Ra'anana, Holon, Netanya), trail runs (Sovev Emek), championship events (Winner Nesher 10K), and regional races. Do not limit to a few — return 10–20+ when the date range spans many months.
+**CRITICAL — Use Google Search:** You MUST use Google Search to find the exact dates for each race. Your training data is often outdated. Search for: "Israeli running races 2026", "Jerusalem Marathon 2026 date", "Shvoong 2026", "Marathon Israel 2026 calendar", "[race name] 2026 registration". Return ONLY dates you find from web search results. Do NOT guess or use dates from memory.
 
-**Dates:** Use the most accurate dates from your knowledge. For recurring annual races, use the date from the official schedule you know (e.g. Jerusalem Marathon is typically late March, Tel Aviv Night Run in late October). When the exact day is uncertain, use the first day of the typical month. Never invent dates.
+**Objective:** For the given distances and date range, return EVERY race in Israel that matches. Include major marathons, night runs (Be'er Sheva LightRun, Tel Aviv Night Run, Yarkon Park), municipal Mirotz events (Herzliya, Kfar Saba, Haifa), trail runs (Sovev Emek), championship events (Winner Nesher), Eilat Desert Marathon, and regional races. Be comprehensive — return 10–20+ when the range spans many months.
 
-**Data Requirements:** For every race: race_name, date (YYYY-MM-DD), city, distances_available, surface_type, official_website, description.
+**Data Requirements:** For every race: race_name, date (YYYY-MM-DD from web search), city, distances_available, surface_type, official_website, description.
 
 **Constraints:**
 - Return strictly JSON matching the schema. No extra text.
-- Include ALL races that match the criteria. Only omit races you do not know about.`
+- Include ALL races that match. Only omit races you cannot find date info for.`
 
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
@@ -123,6 +123,7 @@ export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]>
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: buildPrompt(input) }] }],
+    tools: [{ google_search: {} }],
     generationConfig: {
       temperature: 0.2,
       maxOutputTokens: 8192,
