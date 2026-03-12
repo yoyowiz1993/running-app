@@ -186,10 +186,6 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (!supabase) return
   currentUserId = userId
 
-  // Always wipe local state first to prevent data from a previous user
-  // bleeding into the newly signed-in user's session.
-  clearLocalKeys()
-
   const { data, error } = await supabase
     .from('user_state')
     .select('*')
@@ -198,12 +194,14 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
 
   if (error) {
     console.warn('Cloud hydrate failed:', error.message)
-    return
+    return // Do not clear — keep existing local state
   }
 
+  // Now safe to clear and restore (prevents data from previous user bleeding through)
+  clearLocalKeys()
+
   if (!data) {
-    // Brand-new user — localStorage is already empty, nothing to push.
-    return
+    return // Brand-new user, localStorage already cleared
   }
 
   if (data.onboarding_complete === true) {
