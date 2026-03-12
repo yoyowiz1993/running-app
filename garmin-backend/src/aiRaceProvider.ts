@@ -113,16 +113,18 @@ function mapToRaceResult(r: Record<string, unknown>): RaceResult {
 }
 
 export async function searchRaces(input: RaceSearchInput): Promise<RaceResult[]> {
-  const apiKey = process.env.AI_API_KEY?.trim()
-  const model = process.env.AI_MODEL || 'gemini-3.1-flash-lite-preview'
+  const apiKey = (process.env.AI_RACE_KEY || process.env.AI_API_KEY)?.trim()
+  
   if (!apiKey) {
-    throw new Error('AI_API_KEY not configured')
+    throw new Error('AI_RACE_KEY or AI_API_KEY not configured')
   }
 
-  const url = `${GEMINI_BASE}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`
+  const RACE_MODEL = 'gemini-2.5-flash'
+  const url = `${GEMINI_BASE}/models/${RACE_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`
   const body = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts: [{ text: buildPrompt(input) }] }],
+    tools: [{ google_search: {} }],
     generationConfig: {
       temperature: 0.2,
       maxOutputTokens: 8192,
