@@ -5,6 +5,7 @@ import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { Input } from '../components/Field'
 import { signIn, signInWithGoogle, signUp } from '../lib/auth'
+import { FEATURES as FEATURE_FLAGS } from '../lib/featureFlags'
 
 function GoogleIcon() {
   return (
@@ -129,23 +130,25 @@ export function AuthPage() {
         <FadeUp delay={0.25}>
           <Card className="p-5">
 
-            {/* Google — primary CTA */}
-            <button
-              type="button"
-              onClick={() => void submitGoogle()}
-              disabled={loading}
-              className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50"
-            >
-              <GoogleIcon />
-              Continue with Google
-            </button>
-
-            {/* Divider */}
-            <div className="my-5 flex items-center gap-3">
-              <div className="h-px flex-1 bg-white/10" />
-              <span className="text-xs font-medium text-white/30">or continue with email</span>
-              <div className="h-px flex-1 bg-white/10" />
-            </div>
+            {/* Google — primary CTA (hidden when disabled) */}
+            {FEATURE_FLAGS.googleSignIn && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void submitGoogle()}
+                  disabled={loading}
+                  className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/20 bg-white px-4 py-3 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50 active:scale-[0.98] disabled:opacity-50"
+                >
+                  <GoogleIcon />
+                  Continue with Google
+                </button>
+                <div className="my-5 flex items-center gap-3">
+                  <div className="h-px flex-1 bg-white/10" />
+                  <span className="text-xs font-medium text-white/30">or continue with email</span>
+                  <div className="h-px flex-1 bg-white/10" />
+                </div>
+              </>
+            )}
 
             {/* Mode pill toggle */}
             <div className="mb-4 flex items-center justify-center">

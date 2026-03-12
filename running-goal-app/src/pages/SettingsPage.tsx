@@ -9,6 +9,7 @@ import { signOut } from '../lib/auth'
 import { clearAllData, loadActivePlan, loadPlans } from '../lib/storage'
 import { computeStreak } from '../lib/stats'
 import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
+import { FEATURES } from '../lib/featureFlags'
 import { getStravaAuthUrl, fetchStravaConnectionStatus, saveStravaTokens } from '../lib/strava'
 import { supabase } from '../lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
@@ -208,7 +209,8 @@ export function SettingsPage() {
           </Card>
         </motion.div>
 
-        {/* ── Garmin ── */}
+        {/* ── Garmin (hidden when disabled) ── */}
+        {FEATURES.garmin ? (
         <motion.div variants={fadeUp}>
           <Card className="p-4">
             <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">
@@ -244,8 +246,10 @@ export function SettingsPage() {
             ) : null}
           </Card>
         </motion.div>
+        ) : null}
 
-        {/* ── Strava ── */}
+        {/* ── Strava (hidden when disabled) ── */}
+        {FEATURES.strava ? (
         <motion.div variants={fadeUp}>
           <Card className="p-4">
             <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">
@@ -286,6 +290,7 @@ export function SettingsPage() {
             </div>
           </Card>
         </motion.div>
+        ) : null}
 
         {/* ── Danger zone ── */}
         <motion.div variants={fadeUp}>

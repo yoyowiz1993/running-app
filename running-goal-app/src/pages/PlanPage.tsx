@@ -5,9 +5,6 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
-import { DurationWheelPicker } from '../components/DurationWheelPicker'
-import { NumberWheelPicker } from '../components/NumberWheelPicker'
-import { PaceWheelPicker } from '../components/PaceWheelPicker'
 import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { clampPace } from '../lib/pace'
@@ -331,19 +328,41 @@ export function PlanPage() {
               <>
                 <div className="text-base font-semibold text-white">Set your goal finish time</div>
                 <div className="mt-4 space-y-3">
-                  <Label>Goal time</Label>
-                  <div className="mt-1">
-                    <DurationWheelPicker
-                      hours={raceHours}
-                      minutes={raceMinutes}
-                      seconds={raceSeconds}
-                      onChange={({ hours, minutes, seconds }) => {
-                        setRaceHours(hours)
-                        setRaceMinutes(minutes)
-                        setRaceSeconds(seconds)
-                      }}
-                      maxHours={6}
-                    />
+                  <Label>Goal time (h : m : s)</Label>
+                  <div className="mt-1 grid grid-cols-3 gap-2">
+                    <div>
+                      <Input
+                        inputMode="numeric"
+                        value={raceHours}
+                        onChange={(e) => setRaceHours(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                        placeholder="0"
+                        maxLength={2}
+                        title="Hours"
+                      />
+                      <Help>hrs</Help>
+                    </div>
+                    <div>
+                      <Input
+                        inputMode="numeric"
+                        value={raceMinutes}
+                        onChange={(e) => setRaceMinutes(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                        placeholder="25"
+                        maxLength={2}
+                        title="Minutes"
+                      />
+                      <Help>min</Help>
+                    </div>
+                    <div>
+                      <Input
+                        inputMode="numeric"
+                        value={raceSeconds}
+                        onChange={(e) => setRaceSeconds(e.target.value.replace(/\D/g, '').slice(0, 2))}
+                        placeholder="30"
+                        maxLength={2}
+                        title="Seconds"
+                      />
+                      <Help>sec</Help>
+                    </div>
                   </div>
                   {calculatedPaceSec ? (
                     <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/8 px-2.5 py-1.5">
@@ -422,26 +441,37 @@ export function PlanPage() {
                       </Select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="space-y-3">
                     <div>
-                      <Label>Easy pace</Label>
-                      <div className="mt-1">
-                        <PaceWheelPicker value={currentPaceText} onChange={setCurrentPaceText} />
-                      </div>
+                      <Label>Easy pace <span className="text-white/30 font-normal">(optional)</span></Label>
+                      <Input
+                        value={currentPaceText}
+                        onChange={(e) => setCurrentPaceText(e.target.value)}
+                        placeholder="5:30"
+                        title="min:sec per km"
+                      />
                       <Help>min:sec/km</Help>
                     </div>
                     <div>
-                      <Label>Weekly km</Label>
-                      <div className="mt-1">
-                        <NumberWheelPicker min={0} max={150} step={1} value={currentWeeklyKm} onChange={setCurrentWeeklyKm} suffix=" km" allowEmpty />
-                      </div>
+                      <Label>Weekly km <span className="text-white/30 font-normal">(optional)</span></Label>
+                      <Input
+                        inputMode="decimal"
+                        value={currentWeeklyKm}
+                        onChange={(e) => setCurrentWeeklyKm(e.target.value)}
+                        placeholder="e.g. 35"
+                        title="Recent weekly avg"
+                      />
                       <Help>Recent avg</Help>
                     </div>
                     <div>
-                      <Label>Longest run</Label>
-                      <div className="mt-1">
-                        <NumberWheelPicker min={0} max={42} step={1} value={longestRecentRunKm} onChange={setLongestRecentRunKm} suffix=" km" allowEmpty />
-                      </div>
+                      <Label>Longest run <span className="text-white/30 font-normal">(optional)</span></Label>
+                      <Input
+                        inputMode="decimal"
+                        value={longestRecentRunKm}
+                        onChange={(e) => setLongestRecentRunKm(e.target.value)}
+                        placeholder="e.g. 21"
+                        title="km"
+                      />
                       <Help>km</Help>
                     </div>
                   </div>

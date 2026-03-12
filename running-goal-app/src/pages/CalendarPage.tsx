@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
+import { FEATURES } from '../lib/featureFlags'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
@@ -324,14 +325,16 @@ export function CalendarPage() {
                 </span>
               </div>
 
-              {/* Row 3: sync buttons */}
-              <div className="mt-3 flex items-center gap-2">
-                <StravaButton onClick={() => void syncFromStrava()} loading={syncingStrava} />
-                <GarminButton onClick={() => void syncAll()} loading={syncingAll} />
-              </div>
+              {/* Row 3: sync buttons (hidden when disabled) */}
+              {(FEATURES.garmin || FEATURES.strava) ? (
+                <div className="mt-3 flex items-center gap-2">
+                  {FEATURES.strava ? <StravaButton onClick={() => void syncFromStrava()} loading={syncingStrava} /> : null}
+                  {FEATURES.garmin ? <GarminButton onClick={() => void syncAll()} loading={syncingAll} /> : null}
+                </div>
+              ) : null}
             </Card>
 
-            {stravaMessage ? (
+            {FEATURES.strava && stravaMessage ? (
               <div className={`mt-3 rounded-xl px-3 py-2 text-sm ${
                 stravaMessage.includes('No matching') || stravaMessage.includes('failed') || stravaMessage.includes('Not signed')
                   ? 'border border-amber-500/20 bg-amber-500/10 text-amber-200'
@@ -479,12 +482,12 @@ export function CalendarPage() {
                                 {w.type}
                               </div>
                               {w.type !== 'rest' && <StatusBadge status={status} />}
-                              {w.stravaSyncStatus === 'synced' ? (
+                              {FEATURES.strava && w.stravaSyncStatus === 'synced' ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-[#FC4C02]/30 bg-[#FC4C02]/10 px-2 py-0.5 text-[10px] font-semibold text-[#FC4C02]">
                                   S Strava
                                 </span>
                               ) : null}
-                              {w.garminSyncStatus === 'synced' ? (
+                              {FEATURES.garmin && w.garminSyncStatus === 'synced' ? (
                                 <span className="inline-flex items-center gap-1 rounded-full border border-[#1F6DAA]/30 bg-[#1F6DAA]/10 px-2 py-0.5 text-[10px] font-semibold text-[#5BA3D0]">
                                   G Garmin
                                 </span>

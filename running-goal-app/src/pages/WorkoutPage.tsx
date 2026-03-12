@@ -6,6 +6,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
+import { FEATURES } from '../lib/featureFlags'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
 import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
@@ -659,21 +660,25 @@ export function WorkoutPage() {
               </div>
             ) : null}
 
-            {/* Sync buttons */}
-            {workout.type !== 'rest' ? (
+            {/* Sync buttons (hidden when disabled) */}
+            {(FEATURES.garmin || FEATURES.strava) && workout.type !== 'rest' ? (
               <div className="flex gap-2 w-full">
-                <StravaButton
-                  onClick={() => void syncFromStrava()}
-                  loading={syncingStrava}
-                  label={workout.stravaSyncStatus === 'synced' ? 'Re-sync Strava' : 'Sync Strava'}
-                />
-                <GarminButton
-                  onClick={() => void syncWorkout()}
-                  loading={syncing}
-                />
+                {FEATURES.strava ? (
+                  <StravaButton
+                    onClick={() => void syncFromStrava()}
+                    loading={syncingStrava}
+                    label={workout.stravaSyncStatus === 'synced' ? 'Re-sync Strava' : 'Sync Strava'}
+                  />
+                ) : null}
+                {FEATURES.garmin ? (
+                  <GarminButton
+                    onClick={() => void syncWorkout()}
+                    loading={syncing}
+                  />
+                ) : null}
               </div>
             ) : null}
-            {stravaError ? (
+            {FEATURES.strava && stravaError ? (
               <div className="w-full rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                 {stravaError}
               </div>
@@ -691,7 +696,7 @@ export function WorkoutPage() {
                 <div className="text-sm text-white/60">{workout.plannedDistanceKm} km planned</div>
               ) : null}
             </div>
-            {workout.garminDistanceKm != null ? (
+            {FEATURES.garmin && workout.garminDistanceKm != null ? (
               <div className="text-sm text-emerald-200">
                 Garmin: {workout.garminDistanceKm.toFixed(2)} km ·{' '}
                 {formatClock(workout.garminDurationSec ?? 0)}
@@ -700,7 +705,7 @@ export function WorkoutPage() {
                   : ''}
               </div>
             ) : null}
-            {workout.garminSyncStatus ? (
+            {FEATURES.garmin && workout.garminSyncStatus ? (
               <div
                 className={`text-xs ${
                   workout.garminSyncStatus === 'synced'
@@ -717,8 +722,8 @@ export function WorkoutPage() {
           </div>
         </Card>
 
-        {/* ── Strava stats ── */}
-        {workout.stravaSyncStatus === 'synced' && workout.stravaDistanceKm != null ? (
+        {/* ── Strava stats (hidden when disabled) ── */}
+        {FEATURES.strava && workout.stravaSyncStatus === 'synced' && workout.stravaDistanceKm != null ? (
           <Card className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-orange-300">Strava Activity</div>
