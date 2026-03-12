@@ -27,12 +27,19 @@ export type RaceResult = {
 const SYSTEM_PROMPT = `You are a running race database for Israel. Your job is to list real running races in Israel based on user criteria.
 
 Rules:
+- Return ALL races that match the criteria — do not limit to one or a few. Include every race you know that fits the location, date range, and distance filters. Be comprehensive.
 - Return ONLY valid JSON — no markdown, no code fences, no commentary.
 - Only include REAL races that you know exist. Do not invent races.
 - Focus on Israel. Include Hebrew names when you know them.
 - If you don't know of any races matching the criteria, return an empty races array.
 - Date format: YYYY-MM-DD.
-- Distances: use standard names like "5K", "10K", "Half Marathon", "Marathon".`
+- Distances: use standard names like "5K", "10K", "Half Marathon", "Marathon".
+
+CRITICAL — Date accuracy:
+- Only include a race if you are confident of the EXACT date. Wrong dates harm users who plan training around race day.
+- Your training data may be outdated. If you are unsure about a date (e.g. Jerusalem Marathon is often late March but the exact day varies by year), prefer OMITTING the race over guessing.
+- When in doubt, return an empty races array or fewer races. Accuracy over completeness.
+- Do NOT approximate or infer dates from patterns (e.g. "usually in March"). Only include when you have the exact date.`
 
 function buildPrompt(input: RaceSearchInput): string {
   const { location, radiusKm = 50, dateFrom, dateTo, distances } = input
@@ -59,7 +66,7 @@ function buildPrompt(input: RaceSearchInput): string {
 ${datePart}
 ${distPart}
 
-Include well-known races such as: Tel Aviv Marathon, Jerusalem Marathon, Dead Sea Marathon, Eilat Marathon, TLV Night Run, Yarkon Half Marathon, Haifa Marathon, Tiberias Marathon, and any others you know in the area.
+List ALL races you know that match — Tel Aviv Marathon, Jerusalem Marathon, Dead Sea Marathon, Eilat Marathon, TLV Night Run, Yarkon Half Marathon, Haifa Marathon, Tiberias Marathon, and any others in the area and time frame. Do not stop at one; include every matching race.
 
 Return JSON:
 {

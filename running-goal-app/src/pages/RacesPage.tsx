@@ -154,8 +154,13 @@ export function RacesPage() {
         {/* Results */}
         {races.length > 0 && (
           <Card className="p-4">
-            <div className="text-sm font-semibold text-white mb-3">
-              Found {races.length} race{races.length !== 1 ? 's' : ''}
+            <div className="mb-3">
+              <div className="text-sm font-semibold text-white">
+                Found {races.length} race{races.length !== 1 ? 's' : ''}
+              </div>
+              <div className="mt-1 text-[11px] text-white/40">
+                Dates are AI-generated — verify on the registration site before making plans.
+              </div>
             </div>
             <div className="space-y-3">
               {races.map((race, i) => (
