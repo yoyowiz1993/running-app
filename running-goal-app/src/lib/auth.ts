@@ -26,7 +26,12 @@ export async function signIn(email: string, password: string): Promise<string | 
 
 export async function signUp(email: string, password: string): Promise<string | null> {
   if (!supabase) return 'Supabase is not configured.'
-  const { error } = await supabase.auth.signUp({ email, password })
+  const redirectTo = `${window.location.origin}${import.meta.env.BASE_URL}`
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: redirectTo },
+  })
   return error?.message ?? null
 }
 

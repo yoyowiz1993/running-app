@@ -386,7 +386,7 @@ export function WorkoutPage() {
                   {formatClock(player.remainingSec)}
                 </motion.div>
                 {player.currentStage?.targetPaceSecPerKm ? (
-                  <div className="mt-1.5 text-xs font-medium text-white/50 leading-relaxed">
+                  <div className="mt-1.5 text-center text-xs font-medium text-white/50 leading-relaxed max-w-[260px]">
                     {formatPaceWithTreadmillLabels(player.currentStage.targetPaceSecPerKm)}
                   </div>
                 ) : null}
@@ -442,31 +442,29 @@ export function WorkoutPage() {
               </Button>
             </div>
 
-            {/* Status badge */}
+            {/* Status + action buttons */}
             {workout.type !== 'rest' ? (
-              <div className="flex items-center justify-center">
-                <StatusBadge status={status} />
-              </div>
-            ) : null}
-
-            {/* Status action buttons */}
-            {workout.type !== 'rest' ? (
-              <div className="flex gap-2 w-full">
-                {status !== 'completed' ? (
-                  <Button variant="ghost" className="flex-1" onClick={markComplete}>
-                    <SquareCheck className="h-4 w-4" /> Mark complete
-                  </Button>
-                ) : null}
-                {status !== 'missed' ? (
-                  <Button variant="ghost" className="flex-1" onClick={markMissed}>
-                    ✕ Mark missed
-                  </Button>
-                ) : null}
-                {(status === 'completed' || status === 'missed') && (workout.completedAtISO || workout.missedAtISO) ? (
-                  <Button variant="ghost" className="flex-1" onClick={resetStatus}>
-                    <RefreshCw className="h-4 w-4" /> Reset
-                  </Button>
-                ) : null}
+              <div className="w-full space-y-3">
+                <div className="flex items-center justify-center">
+                  <StatusBadge status={status} />
+                </div>
+                <div className="flex items-center gap-2 w-full">
+                  {status !== 'completed' ? (
+                    <Button variant="ghost" className="flex-1 min-w-0" onClick={markComplete}>
+                      <SquareCheck className="h-4 w-4 shrink-0" /> <span className="truncate">Mark complete</span>
+                    </Button>
+                  ) : null}
+                  {status !== 'missed' ? (
+                    <Button variant="ghost" className="flex-1 min-w-0" onClick={markMissed}>
+                      <span className="shrink-0 text-base leading-none">×</span> <span className="truncate">Mark missed</span>
+                    </Button>
+                  ) : null}
+                  {(status === 'completed' || status === 'missed') && (workout.completedAtISO || workout.missedAtISO) ? (
+                    <Button variant="ghost" className="flex-1 min-w-0" onClick={resetStatus}>
+                      <RefreshCw className="h-4 w-4 shrink-0" /> <span className="truncate">Reset</span>
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
@@ -495,9 +493,9 @@ export function WorkoutPage() {
         {/* ── Meta info ── */}
         <Card className="p-4">
           <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="space-y-0.5">
+            <div className="flex flex-col gap-1">
               <div className="text-xs text-white/50">{workout.dateISO}</div>
-              <div className="text-white/80">{formatDurationShort(workout.totalDurationSec)}</div>
+              <div className="text-base font-medium text-white">{formatDurationShort(workout.totalDurationSec)}</div>
               {typeof workout.plannedDistanceKm === 'number' ? (
                 <div className="text-sm text-white/60">{workout.plannedDistanceKm} km planned</div>
               ) : null}
