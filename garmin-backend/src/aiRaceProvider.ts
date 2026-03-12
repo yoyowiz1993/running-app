@@ -25,33 +25,44 @@ export type RaceResult = {
 }
 
 /**
- * Optimized system prompt: site-specific Israeli sources (shvoong, 4sport, realtiming),
- * anchor races verification, and strict exclusion clause to prevent hallucinated dates.
+ * Hebrew-focused system prompt: targets Israeli portals (runpanel, marathonisrael, iaa, giltiming, shvoong, 4sport, realtiming),
+ * requires 5–7 iterative searches, mandates translation from Hebrew to English, strict exclusion clause.
  */
 const SYSTEM_PROMPT = `You are an expert sports data extraction assistant. Your strict task is to compile a verified JSON list of running races in Israel occurring within the date range and distance filters provided by the user.
 
-CRITICAL INSTRUCTIONS TO PREVENT HALLUCINATIONS:
+CRITICAL INSTRUCTIONS TO PREVENT HALLUCINATIONS & ENSURE HIGH VOLUME:
 
-1. TARGETED SEARCH REQUIRED: Your training data is outdated. You MUST use Google Search to find the dates for the specified year(s).
-2. USE LOCAL ISRAELI SOURCES: Search specific Israeli race aggregators and timing sites. Use search queries like: "site:shvoong.co.il [YEAR]", "site:4sport.co.il [YEAR]", "site:realtiming.co.il [YEAR]", or "Marathon Israel [YEAR] dates".
-3. VERIFY MAJOR RACES: Specifically search for the official dates of the Tel Aviv Marathon, Jerusalem Marathon, Tiberias Marathon, Dead Sea Marathon, and Eilat Desert Marathon.
-4. STRICT EXCLUSION: If you cannot find a confirmed YYYY-MM-DD date on an official website, news article, or timing portal, DO NOT include the race. Guessing is strictly prohibited.
+TARGETED HEBREW SEARCH REQUIRED: The vast majority of Israeli races are listed in Hebrew. You MUST use the web search tool to specifically target the main Israeli running portals and timing companies. Use the following exact search queries, executing multiple separate searches to build a comprehensive list:
+- site:runpanel.co.il "לוח מרוצים" 2026 OR site:runpanel.co.il "מרוץ" 2026
+- site:marathonisrael.co.il 2026
+- site:iaa.co.il "מרוץ" 2026 (Israeli Athletic Association)
+- site:giltiming.co.il 2026
+- "עולם הריצה" "לוח מרוצים" 2026
+- site:shvoong.co.il "לוח אירועים" 2026 OR site:shvoong.co.il "מרוץ" 2026
+- site:4sport.co.il "מרוץ" 2026
+- site:realtiming.co.il 2026
+
+ITERATIVE SEARCHING (MANDATORY): Do not stop after a single search. You must execute at least 5 to 7 different search queries from the list above. Review the results from each, extract the races, and continue searching to ensure no major or local race is missed.
+
+VERIFICATION & TRANSLATION: When extracting data from Hebrew sources (e.g., "מרתון תל אביב", "מרוץ הלילה"), translate the race_name and city to English for the JSON output. Keep the translations accurate and standard.
+
+STRICT EXCLUSION (NO GUESSING): If you cannot find a confirmed, explicitly stated date on one of these official portals, timing sites, or official race websites, DO NOT include the race. Do not estimate or assume dates based on previous years. Do not estimate or assume dates based on 2025 events.
 
 DATA REQUIREMENTS:
 - Distances: Only include events offering at least one of: 5K, 10K, 21.1K, 42.2K (or the distances specified by the user).
-- Date Format: YYYY-MM-DD exactly.
+- Date Format: YYYY-MM-DD exactly. If the exact day is missing, omit the race.
 
 OUTPUT FORMAT:
-Return ONLY a valid JSON object with the key "races". No conversational text before or after the JSON.
+Return ONLY a valid JSON object with the key "races". Do not include any conversational text, markdown formatting blocks outside the JSON, or explanations.
 
-Expected format:
+Expected exact structure:
 {
   "races": [
     {
-      "race_name": "...",
+      "race_name": "Tel Aviv Marathon",
       "date": "YYYY-MM-DD",
-      "city": "...",
-      "distances_available": ["5K", "10K", ...],
+      "city": "Tel Aviv",
+      "distances_available": ["5K", "10K", "21.1K", "42.2K"],
       "surface_type": "road",
       "official_website": "https://...",
       "description": "..."
@@ -86,20 +97,16 @@ const RESPONSE_SCHEMA = {
 } as const
 
 function buildPrompt(input: RaceSearchInput): string {
-  const { dateFrom, dateTo, distances } = input
-  const now = new Date()
-  const defaultFrom = `${now.getFullYear()}-01-01`
-  const defaultTo = `${now.getFullYear() + 1}-12-31`
-
-  const fromStr = (dateFrom || defaultFrom).slice(0, 10)
-  const toStr = (dateTo || defaultTo).slice(0, 10)
+  const { distances } = input
+  const fromStr = '2026-01-01'
+  const toStr = '2026-12-31'
 
   let distStr = '5K, 10K, 21.1K, 42.2K'
   if (distances && distances.length > 0) {
     distStr = distances.join(', ')
   }
 
-  return `Compile a verified list of running races in Israel occurring between ${fromStr} and ${toStr}. Distances: ${distStr}. Use site:shvoong.co.il, site:4sport.co.il, and site:realtiming.co.il to find confirmed dates. STRICT: Only include races where you found a confirmed YYYY-MM-DD on an official source. Return ONLY valid JSON with key "races".`
+  return `Compile a verified list of running races in Israel occurring between ${fromStr} and ${toStr}. Distances: ${distStr}. Execute at least 5-7 separate searches using the Hebrew portal queries with 2026. Translate race names and cities from Hebrew to English. STRICT: Only include races where you found a confirmed YYYY-MM-DD on an official source. Do not estimate or assume dates based on 2025 events. Return ONLY valid JSON with key "races".`
 }
 
 function parseJsonSafe(raw: string): { races?: unknown[] } | null {
