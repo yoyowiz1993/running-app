@@ -7,6 +7,7 @@ import { CalendarPage } from './pages/CalendarPage'
 import { HomePage } from './pages/HomePage'
 import { NutritionPage } from './pages/NutritionPage'
 import { PlanPage } from './pages/PlanPage'
+import { RacesPage } from './pages/RacesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkoutPage } from './pages/WorkoutPage'
 import { AuthPage } from './pages/AuthPage'
@@ -35,6 +36,7 @@ function Shell() {
             <Route path="/plan" element={<PlanPage />} />
             <Route path="/calendar" element={<CalendarPage />} />
             <Route path="/nutrition" element={<NutritionPage />} />
+            <Route path="/races" element={<RacesPage />} />
             <Route path="/workout/:id" element={<WorkoutPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

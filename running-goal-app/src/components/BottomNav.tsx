@@ -1,4 +1,4 @@
-import { Calendar, Dumbbell, Home, Utensils, UserCircle } from 'lucide-react'
+import { Calendar, Dumbbell, Home, Trophy, Utensils, UserCircle } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '../lib/cn'
 
@@ -36,6 +36,7 @@ export function BottomNav() {
           <Item to="/" label="Home" icon={Home} />
           <Item to="/plan" label="Plan" icon={Dumbbell} />
           <Item to="/calendar" label="Calendar" icon={Calendar} />
+          <Item to="/races" label="Races" icon={Trophy} />
           <Item to="/nutrition" label="Nutrition" icon={Utensils} />
           <Item to="/settings" label="Account" icon={UserCircle} />
         </div>

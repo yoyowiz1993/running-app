@@ -1,6 +1,6 @@
 import confetti from 'canvas-confetti'
 import { format, isAfter, isValid, parseISO, startOfDay } from 'date-fns'
-import { ArrowLeft, ChevronRight, List, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { ArrowLeft, ChevronRight, List, MapPin, Plus, Sparkles, Trophy, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
@@ -9,6 +9,7 @@ import { Help, Input, Label, Select } from '../components/Field'
 import { TopBar } from '../components/TopBar'
 import { clampPace } from '../lib/pace'
 import { createProgram } from '../lib/programs'
+import { distanceLabelToKm, searchRaces, type RaceResult } from '../lib/races'
 import {
   deletePlan,
   flushCloudSync,
@@ -27,6 +28,21 @@ const CLASSIC_DISTANCES = [
   { label: 'Half Marathon (21.1K)', value: '21.1' },
   { label: 'Marathon (42.2K)', value: '42.2' },
   { label: 'Custom', value: 'custom' },
+]
+
+const RACE_TYPE_OPTIONS = [
+  { value: '', label: 'Any' },
+  { value: '5K', label: '5K' },
+  { value: '10K', label: '10K' },
+  { value: 'Half Marathon', label: 'Half (21K)' },
+  { value: 'Marathon', label: 'Marathon (42K)' },
+]
+
+const RADIUS_OPTIONS = [
+  { value: '25', label: '25 km' },
+  { value: '50', label: '50 km' },
+  { value: '100', label: '100 km' },
+  { value: '200', label: '200 km' },
 ]
 
 function todayISO(): string {
@@ -69,6 +85,18 @@ export function PlanPage() {
   const [creating, setCreating] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [wizardStep, setWizardStep] = useState(0) // 0 = list, 1–6 = create steps
+
+  // Goal entry: pick a race vs enter manually
+  const [goalEntryMode, setGoalEntryMode] = useState<'race' | 'manual' | null>(null)
+  const [selectedRace, setSelectedRace] = useState<RaceResult | null>(null)
+  const [selectedRaceDistance, setSelectedRaceDistance] = useState<string>('') // when race has multiple distances
+  const [raceLocation, setRaceLocation] = useState('Tel Aviv')
+  const [raceRadius, setRaceRadius] = useState('50')
+  const [raceType, setRaceType] = useState('')
+  const [raceDateFrom, setRaceDateFrom] = useState(todayISO())
+  const [raceDateTo, setRaceDateTo] = useState('')
+  const [raceResults, setRaceResults] = useState<RaceResult[]>([])
+  const [raceSearching, setRaceSearching] = useState(false)
 
   const distanceKm = distancePreset === 'custom'
     ? customDistance
@@ -173,8 +201,15 @@ export function PlanPage() {
 
   function canProceedFromStep(step: number): boolean {
     if (step === 1) {
-      const d = Number(distanceKm)
-      return Number.isFinite(d) && d > 0
+      if (goalEntryMode === null) return false
+      if (goalEntryMode === 'manual') {
+        const d = Number(distanceKm)
+        return Number.isFinite(d) && d > 0
+      }
+      // race mode: need selected race and distance
+      if (!selectedRace) return false
+      if (selectedRace.distances.length === 1) return distanceLabelToKm(selectedRace.distances[0]) !== null
+      return !!selectedRaceDistance && distanceLabelToKm(selectedRaceDistance) !== null
     }
     if (step === 2) {
       const h = Number(raceHours || 0)
@@ -297,30 +332,195 @@ export function PlanPage() {
           <Card className="p-5">
             {wizardStep === 1 && (
               <>
-                <div className="text-base font-semibold text-white">Pick your race distance</div>
-                <div className="mt-4 space-y-3">
-                  <Label>Race distance</Label>
-                  <Select
-                    value={distancePreset}
-                    onChange={(e) => { setDistancePreset(e.target.value); setCustomDistance('') }}
-                  >
-                    <option value="" disabled>Select distance…</option>
-                    {CLASSIC_DISTANCES.map((d) => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </Select>
-                  {distancePreset === 'custom' && (
-                    <div>
-                      <Label>Custom distance (km)</Label>
-                      <Input
-                        inputMode="decimal"
-                        value={customDistance}
-                        onChange={(e) => setCustomDistance(e.target.value)}
-                        placeholder="e.g. 8"
-                      />
+                {goalEntryMode === null ? (
+                  <>
+                    <div className="text-base font-semibold text-white">How do you want to set your goal?</div>
+                    <div className="mt-4 flex flex-col gap-3">
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        className="w-full justify-start"
+                        onClick={() => setGoalEntryMode('race')}
+                      >
+                        <Trophy className="h-5 w-5 shrink-0" />
+                        Find a race
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="lg"
+                        className="w-full justify-start"
+                        onClick={() => setGoalEntryMode('manual')}
+                      >
+                        <span className="text-lg">✏️</span>
+                        Enter distance & date manually
+                      </Button>
                     </div>
-                  )}
-                </div>
+                  </>
+                ) : goalEntryMode === 'race' ? (
+                  <>
+                    <div className="text-base font-semibold text-white">Find your race</div>
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <Label>Location</Label>
+                        <Input
+                          placeholder="e.g. Tel Aviv, Jerusalem"
+                          value={raceLocation}
+                          onChange={(e) => setRaceLocation(e.target.value)}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label>Radius</Label>
+                          <Select value={raceRadius} onChange={(e) => setRaceRadius(e.target.value)}>
+                            {RADIUS_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </Select>
+                        </div>
+                        <div>
+                          <Label>Race type</Label>
+                          <Select value={raceType} onChange={(e) => setRaceType(e.target.value)}>
+                            {RACE_TYPE_OPTIONS.map((o) => (
+                              <option key={o.value || 'any'} value={o.value}>{o.label}</option>
+                            ))}
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <Label>From date</Label>
+                          <Input type="date" value={raceDateFrom} onChange={(e) => setRaceDateFrom(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>To date (optional)</Label>
+                          <Input type="date" value={raceDateTo} onChange={(e) => setRaceDateTo(e.target.value)} />
+                        </div>
+                      </div>
+                      <Button
+                        className="w-full"
+                        onClick={async () => {
+                          if (!raceLocation.trim()) { setError('Enter location'); return }
+                          setError(null); setRaceSearching(true)
+                          try {
+                            const results = await searchRaces({
+                              location: raceLocation.trim(),
+                              radiusKm: Number(raceRadius) || 50,
+                              dateFrom: raceDateFrom || undefined,
+                              dateTo: raceDateTo || undefined,
+                              distances: raceType ? [raceType] : undefined,
+                            })
+                            setRaceResults(results)
+                          } catch (e) {
+                            setError(e instanceof Error ? e.message : 'Search failed')
+                            setRaceResults([])
+                          } finally {
+                            setRaceSearching(false)
+                          }
+                        }}
+                        disabled={raceSearching}
+                      >
+                        {raceSearching ? <>Searching...</> : <>Search races</>}
+                      </Button>
+                      {raceResults.length > 0 && (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {raceResults.map((race, i) => (
+                            <button
+                              key={`${race.name}-${i}`}
+                              type="button"
+                              onClick={() => {
+                                setSelectedRace(race)
+                                setRaceDate(race.date)
+                                if (race.distances.length === 1) {
+                                  const km = distanceLabelToKm(race.distances[0])
+                                  if (km !== null) {
+                                    const match = CLASSIC_DISTANCES.find((d) => Number(d.value) === km)
+                                    setDistancePreset(match ? match.value : 'custom')
+                                    setCustomDistance(match ? '' : String(km))
+                                    setSelectedRaceDistance(race.distances[0])
+                                  }
+                                } else {
+                                  setSelectedRaceDistance('')
+                                }
+                              }}
+                              className={`w-full rounded-xl border p-3 text-left transition ${
+                                selectedRace?.name === race.name && selectedRace?.date === race.date
+                                  ? 'border-emerald-500/50 bg-emerald-500/10'
+                                  : 'border-white/10 bg-black/20 hover:bg-white/5'
+                              }`}
+                            >
+                              <div className="font-medium text-white">{race.name}</div>
+                              <div className="mt-0.5 flex items-center gap-1.5 text-xs text-white/50">
+                                <MapPin className="h-3 w-3" /> {race.city} · {race.date}
+                              </div>
+                              {race.distances.length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {race.distances.map((d) => (
+                                    <span key={d} className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300">
+                                      {d}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {selectedRace && selectedRace.distances.length > 1 && !selectedRaceDistance && (
+                        <div>
+                          <Label>Which distance are you running?</Label>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedRace.distances.map((d) => {
+                              const km = distanceLabelToKm(d)
+                              if (km === null) return null
+                              return (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedRaceDistance(d)
+                                    const match = CLASSIC_DISTANCES.find((x) => Number(x.value) === km)
+                                    setDistancePreset(match ? match.value : 'custom')
+                                    setCustomDistance(match ? '' : String(km))
+                                  }}
+                                  className="rounded-xl border border-white/20 bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10"
+                                >
+                                  {d}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-base font-semibold text-white">Pick your race distance</div>
+                    <div className="mt-4 space-y-3">
+                      <Label>Race distance</Label>
+                      <Select
+                        value={distancePreset}
+                        onChange={(e) => { setDistancePreset(e.target.value); setCustomDistance('') }}
+                      >
+                        <option value="" disabled>Select distance…</option>
+                        {CLASSIC_DISTANCES.map((d) => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
+                      </Select>
+                      {distancePreset === 'custom' && (
+                        <div>
+                          <Label>Custom distance (km)</Label>
+                          <Input
+                            inputMode="decimal"
+                            value={customDistance}
+                            onChange={(e) => setCustomDistance(e.target.value)}
+                            placeholder="e.g. 8"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </>
             )}
 
