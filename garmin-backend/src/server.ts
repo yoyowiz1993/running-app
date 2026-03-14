@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import { buildAuthUrl, exchangeCodeForToken, generatePKCE } from './garminAuth'
+import { saveGarminTokens } from './garminTokens'
 import { mockPushWorkouts, type PushWorkoutInput } from './workoutSync'
 import { generatePlanFromAI } from './aiPlanProvider'
 import { generateMealSuggestions } from './aiMealProvider'
@@ -46,8 +47,8 @@ const backendUrl = (process.env.BACKEND_URL || process.env.APP_URL || '').replac
 const frontendUrl = (process.env.FRONTEND_URL || process.env.ALLOWED_ORIGIN || '').replace(/\/$/, '')
 const garminPushMode = (process.env.GARMIN_PUSH_MODE || 'mock').toLowerCase()
 
-// In-memory store for PKCE state -> code_verifier (use DB in production)
-const pendingAuth = new Map<string, { codeVerifier: string }>()
+// In-memory store for PKCE state -> code_verifier and optional userId
+const pendingAuth = new Map<string, { codeVerifier: string; userId?: string }>()
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true })
@@ -323,16 +324,18 @@ app.get('/auth/garmin/start', (req, res) => {
     })
   }
 
+  const userId = (req.query.user_id as string | undefined)?.trim() ?? ''
   const redirectUri = `${backendUrl}/auth/garmin/callback`
   const { codeVerifier, codeChallenge, state } = generatePKCE()
-  pendingAuth.set(state, { codeVerifier })
-  setTimeout(() => pendingAuth.delete(state), 10 * 60 * 1000)
+  const compositeState = userId ? `${userId}::${state}` : state
+  pendingAuth.set(compositeState, { codeVerifier, userId })
+  setTimeout(() => pendingAuth.delete(compositeState), 10 * 60 * 1000)
 
   const authUrl = buildAuthUrl({
     clientId,
     redirectUri,
     codeChallenge,
-    state,
+    state: compositeState,
   })
   res.redirect(302, authUrl)
 })
@@ -362,9 +365,14 @@ app.get('/auth/garmin/callback', async (req, res) => {
       codeVerifier: pending.codeVerifier,
       redirectUri,
     })
-    // TODO: store tokens (e.g. in DB keyed by user) and use for /api/activities
-    // For now we just signal success; frontend can set localStorage flag
-    console.log('Garmin OAuth success, access_token received')
+    const userId = state.includes('::') ? state.split('::')[0] : null
+    if (userId) {
+      await saveGarminTokens(userId, {
+        accessToken: tokens.access_token,
+        ...(tokens.refresh_token && { refreshToken: tokens.refresh_token }),
+        ...(tokens.expires_in != null && { expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in }),
+      })
+    }
     return res.redirect(302, redirectToFrontend + 'connected')
   } catch (err) {
     const message = err instanceof Error ? err.message : 'token_exchange_failed'

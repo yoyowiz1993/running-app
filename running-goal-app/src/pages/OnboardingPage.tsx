@@ -3,7 +3,15 @@ import { ChevronRight, Dumbbell, Flag, List, Plus, Sparkles, Target, Utensils } 
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
+import { Input, Label } from '../components/Field'
 import { setOnboardingComplete } from '../lib/storage'
+import { loadNutritionGoals, saveNutritionGoals, type NutritionGoals } from '../lib/nutrition'
+
+const MACRO_PRESETS: Array<{ label: string; goals: Pick<NutritionGoals, 'proteinPct' | 'carbsPct' | 'fatPct'> }> = [
+  { label: 'Balanced', goals: { proteinPct: 30, carbsPct: 45, fatPct: 25 } },
+  { label: 'High protein', goals: { proteinPct: 35, carbsPct: 40, fatPct: 25 } },
+  { label: 'Low carb', goals: { proteinPct: 30, carbsPct: 25, fatPct: 45 } },
+]
 
 const SCREENS = [
   {
@@ -37,6 +45,13 @@ const SCREENS = [
   },
   {
     id: 4,
+    title: 'Set your nutrition goals',
+    subtitle: 'Optional — you can change this anytime in the Nutrition tab.',
+    icon: Target,
+    nutritionForm: true,
+  },
+  {
+    id: 5,
     title: "Let's create your plan",
     subtitle: "You're a few taps away from your first training plan.",
     icon: Dumbbell,
@@ -49,10 +64,22 @@ type OnboardingPageProps = { onComplete?: () => void }
 export function OnboardingPage({ onComplete }: OnboardingPageProps) {
   const nav = useNavigate()
   const [screen, setScreen] = useState(0)
+  const [nutritionCalories, setNutritionCalories] = useState(() => String(loadNutritionGoals().calories))
+  const [nutritionPreset, setNutritionPreset] = useState(0)
   const current = SCREENS[screen]
   const isLast = screen === SCREENS.length - 1
 
   function handleNext() {
+    if ((current as { nutritionForm?: boolean }).nutritionForm) {
+      const cal = Math.round(Number(nutritionCalories)) || 2000
+      const preset = MACRO_PRESETS[nutritionPreset] ?? MACRO_PRESETS[0]
+      saveNutritionGoals({
+        calories: Math.max(100, Math.min(10000, cal)),
+        proteinPct: preset.goals.proteinPct,
+        carbsPct: preset.goals.carbsPct,
+        fatPct: preset.goals.fatPct,
+      })
+    }
     if (isLast) {
       setOnboardingComplete()
       onComplete?.()
@@ -128,6 +155,40 @@ export function OnboardingPage({ onComplete }: OnboardingPageProps) {
                     {step}
                   </motion.div>
                 ))}
+              </div>
+            )}
+
+            {(current as { nutritionForm?: boolean }).nutritionForm && (
+              <div className="mt-8 text-left space-y-4">
+                <div>
+                  <Label>Daily calorie target</Label>
+                  <Input
+                    inputMode="numeric"
+                    value={nutritionCalories}
+                    onChange={(e) => setNutritionCalories(e.target.value)}
+                    placeholder="2000"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Macro split</Label>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {MACRO_PRESETS.map((p, i) => (
+                      <button
+                        key={p.label}
+                        type="button"
+                        onClick={() => setNutritionPreset(i)}
+                        className={`rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                          nutritionPreset === i
+                            ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-300'
+                            : 'border-white/10 bg-white/5 text-white/70 hover:bg-white/10'
+                        }`}
+                      >
+                        {p.label} ({p.goals.proteinPct}/{p.goals.carbsPct}/{p.goals.fatPct})
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </motion.div>

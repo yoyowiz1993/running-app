@@ -1,6 +1,6 @@
 import { addDays, format, getDaysInMonth, isValid, parseISO, startOfMonth } from 'date-fns'
 import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Grid3X3, List, Play } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
@@ -8,7 +8,12 @@ import { TopBar } from '../components/TopBar'
 import { FEATURES } from '../lib/featureFlags'
 import { pushWorkoutsToGarmin } from '../lib/garmin'
 import { applyPushResults, toGarminPushInput } from '../lib/garminPush'
-import { fetchStravaActivities, matchActivitiesToWorkouts, applyStravaMatchesToWorkouts } from '../lib/strava'
+import {
+  fetchStravaActivities,
+  fetchStravaConnectionStatus,
+  matchActivitiesToWorkouts,
+  applyStravaMatchesToWorkouts,
+} from '../lib/strava'
 import { formatPaceWithSpeed } from '../lib/pace'
 import {
   flushCloudSync,
@@ -188,6 +193,33 @@ export function CalendarPage() {
   }
 
   const groups = useMemo(() => groupByDate(plan?.workouts ?? []), [plan?.workouts])
+
+  useEffect(() => {
+    if (!FEATURES.strava || !plan || plan.workouts.filter((w) => w.type !== 'rest').length === 0) return
+    let mounted = true
+    void (async () => {
+      try {
+        const { data } = await supabase!.auth.getUser()
+        const userId = data.user?.id
+        if (!userId) return
+        const { connected } = await fetchStravaConnectionStatus(userId)
+        if (!connected || !mounted) return
+        const activities = await fetchStravaActivities(userId)
+        const matches = matchActivitiesToWorkouts(plan.workouts, activities)
+        if (matches.size === 0) return
+        const updatedWorkouts = applyStravaMatchesToWorkouts(plan.workouts, matches)
+        const nextPlan = updateWorkouts(plan, updatedWorkouts)
+        savePlan(nextPlan)
+        await flushCloudSync()
+        if (mounted) setPlan(nextPlan)
+      } catch {
+        // Silent fail for auto-sync
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [plan?.id])
 
   const monthGrid = useMemo(
     () => buildMonthGrid(gridMonth.year, gridMonth.month, plan),

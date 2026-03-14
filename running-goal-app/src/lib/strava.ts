@@ -1,5 +1,6 @@
 import { getApiBase } from './garmin'
 import { supabase } from './supabase'
+import { showToast } from './toast'
 import type { Workout } from './types'
 
 export type StravaActivity = {
@@ -41,7 +42,10 @@ export async function saveStravaTokens(userId: string, tokens: StravaTokens): Pr
     },
     { onConflict: 'user_id' },
   )
-  if (error) console.warn('Failed to save Strava tokens:', error.message)
+  if (error) {
+    console.warn('Failed to save Strava tokens:', error.message)
+    showToast(`Could not save Strava connection: ${error.message}`, 'error')
+  }
 }
 
 export async function loadStravaTokens(userId: string): Promise<StravaTokens | null> {

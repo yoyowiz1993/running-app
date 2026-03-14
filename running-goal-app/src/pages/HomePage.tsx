@@ -2,6 +2,7 @@ import { format, startOfDay } from 'date-fns'
 import { motion } from 'framer-motion'
 import { CalendarDays, ChevronRight, Dumbbell, Flame, Lightbulb, Timer, TrendingUp, Utensils } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { showWorkoutReminder } from '../lib/notifications'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
@@ -204,6 +205,13 @@ export function HomePage() {
       mounted = false
     }
   }, [])
+
+  useEffect(() => {
+    const next = nextWorkoutFromPlan(plan)
+    if (next && next.dateISO === todayISO() && !next.completedAtISO && next.type !== 'rest') {
+      showWorkoutReminder(next.type)
+    }
+  }, [plan])
 
   const nextWorkout = useMemo(() => nextWorkoutFromPlan(plan), [plan])
   const progress = useMemo(() => (plan ? computeProgress(plan, new Date()) : null), [plan])

@@ -70,9 +70,9 @@ export async function fetchGarminActivities(): Promise<GarminActivity[]> {
   }
 }
 
-export async function getGarminAuthUrl(): Promise<string> {
+export async function getGarminAuthUrl(userId: string): Promise<string> {
   const base = await getApiBase()
-  return `${base}/auth/garmin/start`
+  return `${base}/auth/garmin/start?user_id=${encodeURIComponent(userId)}`
 }
 
 export async function pushWorkoutsToGarmin(

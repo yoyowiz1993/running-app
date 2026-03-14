@@ -1,16 +1,19 @@
 import { motion } from 'framer-motion'
-import { Link2, LogOut, Shield, Trash2, User } from 'lucide-react'
+import { Bell, Link2, LogOut, RefreshCw, Shield, Trash2, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button'
 import { Card } from '../components/Card'
 import { TopBar } from '../components/TopBar'
 import { signOut } from '../lib/auth'
-import { clearAllData, loadActivePlan, loadPlans } from '../lib/storage'
+import { clearAllData, loadActivePlan, loadPlans, retryCloudSync } from '../lib/storage'
 import { computeStreak } from '../lib/stats'
 import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
 import { FEATURES } from '../lib/featureFlags'
+import { getSyncStatus, getSyncLastError, subscribe } from '../lib/syncStatus'
 import { getStravaAuthUrl, fetchStravaConnectionStatus, saveStravaTokens } from '../lib/strava'
+import { isNotificationSupported, requestNotificationPermission } from '../lib/notifications'
 import { supabase } from '../lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
@@ -49,8 +52,18 @@ const fadeUp = {
   animate: { opacity: 1, y: 0, transition: { duration: 0.3 } },
 }
 
+function useSyncStatus() {
+  return useSyncExternalStore(subscribe, getSyncStatus, getSyncStatus)
+}
+
+function useSyncLastError() {
+  return useSyncExternalStore(subscribe, getSyncLastError, getSyncLastError)
+}
+
 export function SettingsPage() {
   const nav = useNavigate()
+  const syncStatus = useSyncStatus()
+  const syncLastError = useSyncLastError()
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [cleared, setCleared] = useState(false)
   const [garminStatus, setGarminStatus] = useState<'unknown' | 'connected' | 'disconnected'>('unknown')
@@ -58,6 +71,13 @@ export function SettingsPage() {
   const [stravaAthleteName, setStravaAthleteName] = useState<string>('')
   const [backendUrl, setBackendUrl] = useState<string>('')
   const [signingOut, setSigningOut] = useState(false)
+  const [ notificationPermission, setNotificationPermission ] = useState<NotificationPermission | null>(null)
+
+  useEffect(() => {
+    if (isNotificationSupported()) {
+      setNotificationPermission(Notification.permission)
+    }
+  }, [])
 
   useEffect(() => {
     void supabase?.auth.getUser().then(({ data }) => {
@@ -117,6 +137,7 @@ export function SettingsPage() {
     }
   }, [])
 
+  const [retrying, setRetrying] = useState(false)
   const plan = loadActivePlan()
   const plans = loadPlans()
   const streak = plan ? computeStreak(plan.workouts) : 0
@@ -190,6 +211,71 @@ export function SettingsPage() {
           </Card>
         </motion.div>
 
+        {/* ── Cloud sync (when failed) ── */}
+        {syncStatus === 'failed' ? (
+        <motion.div variants={fadeUp}>
+          <Card className="p-4 border-amber-500/30 bg-amber-500/5">
+            <div className="text-xs font-semibold uppercase tracking-wider text-amber-400/80 mb-3">
+              Cloud sync failed
+            </div>
+            <p className="text-sm text-white/70 mb-3">
+              {syncLastError ?? 'Could not sync your data.'}
+            </p>
+            <Button
+              variant="secondary"
+              size="lg"
+              className="w-full"
+              onClick={async () => {
+                setRetrying(true)
+                await retryCloudSync()
+                setRetrying(false)
+              }}
+              disabled={retrying}
+            >
+              <RefreshCw className={`h-4 w-4 ${retrying ? 'animate-spin' : ''}`} />
+              {retrying ? 'Retrying…' : 'Retry sync'}
+            </Button>
+          </Card>
+        </motion.div>
+        ) : null}
+
+        {/* ── Workout reminders ── */}
+        {isNotificationSupported() ? (
+          <motion.div variants={fadeUp}>
+            <Card className="p-4">
+              <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">
+                Workout Reminders
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-white/50" />
+                  <div>
+                    <span className="text-sm text-white/70">
+                      {notificationPermission === 'granted'
+                        ? 'Reminders enabled'
+                        : notificationPermission === 'denied'
+                          ? 'Reminders blocked'
+                          : 'Get notified about today\'s run'}
+                    </span>
+                  </div>
+                </div>
+                {notificationPermission !== 'granted' && (
+                  <Button
+                    variant="secondary"
+                    onClick={async () => {
+                      const p = await requestNotificationPermission()
+                      setNotificationPermission(p)
+                    }}
+                    disabled={notificationPermission === 'denied'}
+                  >
+                    {notificationPermission === 'denied' ? 'Blocked' : 'Enable'}
+                  </Button>
+                )}
+              </div>
+            </Card>
+          </motion.div>
+        ) : null}
+
         {/* ── Sign out ── */}
         <motion.div variants={fadeUp}>
           <Card className="p-4">
@@ -229,7 +315,7 @@ export function SettingsPage() {
               </div>
               <Button
                 variant="secondary"
-                onClick={() => { void getGarminAuthUrl().then((url) => { window.location.href = url }) }}
+                onClick={() => { if (user?.id) void getGarminAuthUrl(user.id).then((url) => { window.location.href = url }) }}
               >
                 <Link2 className="h-4 w-4" />
                 {garminStatus === 'connected' ? 'Reconnect' : 'Connect'}

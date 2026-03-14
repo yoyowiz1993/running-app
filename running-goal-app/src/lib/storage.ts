@@ -2,6 +2,8 @@ import type { RunningGoal, TrainingPlan, Workout } from './types'
 import type { NutritionGoals } from './nutrition'
 import { saveNutritionGoals } from './nutrition'
 import { supabase } from './supabase'
+import { setSyncStatus } from './syncStatus'
+import { showToast } from './toast'
 
 const KEY_GOAL = 'runningPlan.goal.v1'
 const KEY_PLAN = 'runningPlan.plan.v1'
@@ -144,6 +146,14 @@ export function updateWorkouts(plan: TrainingPlan, workouts: Workout[]): Trainin
 
 export function setCloudUserId(userId: string | null): void {
   currentUserId = userId
+  if (!userId) setSyncStatus('idle')
+}
+
+/** Retry cloud sync after a failure. Call from Settings or sync-failed UI. */
+export async function retryCloudSync(): Promise<void> {
+  if (!currentUserId || !supabase) return
+  setSyncStatus('syncing')
+  await pushLocalStateToCloud()
 }
 
 function scheduleCloudSync(): void {
@@ -168,6 +178,13 @@ export async function flushCloudSync(): Promise<void> {
 
 async function pushLocalStateToCloud(): Promise<void> {
   if (!currentUserId || !supabase) return
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+  if (isOffline) {
+    setSyncStatus('offline')
+    return
+  }
+
+  setSyncStatus('syncing')
   const goal = loadGoal()
   const plans = loadPlans()
   const activePlanId = loadActivePlanId()
@@ -186,14 +203,24 @@ async function pushLocalStateToCloud(): Promise<void> {
 
   const { error } = await supabase.from('user_state').upsert(payload as Record<string, unknown>, { onConflict: 'user_id' })
   if (error) {
-    console.warn('Cloud sync failed:', error.message)
+    setSyncStatus('failed', error.message)
+    showToast(`Sync failed: ${error.message}`, 'error')
+    return
   }
+  setSyncStatus('synced')
 }
 
 export async function hydrateLocalFromCloud(userId: string): Promise<void> {
   if (!supabase) return
   currentUserId = userId
 
+  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+  if (isOffline) {
+    setSyncStatus('offline')
+    return // Keep local state when offline
+  }
+
+  setSyncStatus('syncing')
   const { data, error } = await supabase
     .from('user_state')
     .select('*')
@@ -201,9 +228,11 @@ export async function hydrateLocalFromCloud(userId: string): Promise<void> {
     .maybeSingle()
 
   if (error) {
-    console.warn('Cloud hydrate failed:', error.message)
+    setSyncStatus('failed', error.message)
+    showToast(`Could not load cloud data: ${error.message}`, 'error')
     return // Do not clear — keep existing local state
   }
+  setSyncStatus('synced')
 
   // Now safe to clear and restore (prevents data from previous user bleeding through)
   clearLocalKeys()

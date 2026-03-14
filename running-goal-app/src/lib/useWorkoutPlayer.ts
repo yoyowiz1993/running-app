@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Workout } from './types'
-import { speakStage, speakWorkoutComplete } from './voiceCues'
+import { speakStage, speakSecondsRemaining, speakWorkoutComplete } from './voiceCues'
 
 type Status = 'idle' | 'running' | 'paused' | 'finished'
 
@@ -41,6 +41,7 @@ export function useWorkoutPlayer(workout: Workout | null, options?: Options) {
   const tickRef = useRef<number | null>(null)
   const stageStartMsRef = useRef<number | null>(null)
   const stageDurationSecRef = useRef<number>(stages[0]?.durationSec ?? 0)
+  const countdownAnnouncedRef = useRef<Set<number>>(new Set())
 
   const currentStage = stages[stageIndex] ?? null
   const nextStage = stages[stageIndex + 1] ?? null
@@ -67,12 +68,23 @@ export function useWorkoutPlayer(workout: Workout | null, options?: Options) {
 
   function startTicker(): void {
     stopTicker()
+    countdownAnnouncedRef.current = new Set()
     tickRef.current = window.setInterval(() => {
       const stageStartMs = stageStartMsRef.current
       if (!stageStartMs) return
       const elapsedSec = Math.floor((Date.now() - stageStartMs) / 1000)
       const left = Math.max(0, stageDurationSecRef.current - elapsedSec)
       setRemainingSec(left)
+
+      if (voiceEnabledRef.current && left > 0) {
+        for (const m of [30, 10, 3]) {
+          if (left <= m && !countdownAnnouncedRef.current.has(m)) {
+            countdownAnnouncedRef.current.add(m)
+            speakSecondsRemaining(m)
+            break
+          }
+        }
+      }
 
       if (left <= 0) {
         advance()
@@ -81,6 +93,7 @@ export function useWorkoutPlayer(workout: Workout | null, options?: Options) {
   }
 
   function setStage(idx: number): void {
+    countdownAnnouncedRef.current = new Set()
     const clamped = Math.max(0, Math.min(idx, Math.max(0, stages.length - 1)))
     setStageIndex(clamped)
     const dur = stages[clamped]?.durationSec ?? 0
