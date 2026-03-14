@@ -13,6 +13,30 @@ const KEY_ONBOARDING = 'runningPlan.onboardingComplete.v1'
 let currentUserId: string | null = null
 let syncTimer: number | null = null
 
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // ignore storage errors (quota, private mode, etc.)
+  }
+}
+
+function safeRemoveItem(key: string): void {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
 function safeParseJson<T>(raw: string | null): T | null {
   if (!raw) return null
   try {
@@ -23,34 +47,34 @@ function safeParseJson<T>(raw: string | null): T | null {
 }
 
 function migrateLegacyPlanIfNeeded(): void {
-  const legacy = localStorage.getItem(KEY_PLAN)
-  const plans = localStorage.getItem(KEY_PLANS)
+  const legacy = safeGetItem(KEY_PLAN)
+  const plans = safeGetItem(KEY_PLANS)
   if (!legacy || plans) return
 
   const parsed = safeParseJson<TrainingPlan>(legacy)
   if (!parsed) {
-    localStorage.removeItem(KEY_PLAN)
+    safeRemoveItem(KEY_PLAN)
     return
   }
 
   const migrated = { ...parsed, planName: parsed.planName ?? `Plan ${parsed.raceDateISO}`, endDateISO: parsed.endDateISO ?? parsed.raceDateISO }
-  localStorage.setItem(KEY_PLANS, JSON.stringify([migrated]))
-  localStorage.setItem(KEY_ACTIVE_PLAN_ID, migrated.id)
-  localStorage.removeItem(KEY_PLAN)
+  safeSetItem(KEY_PLANS, JSON.stringify([migrated]))
+  safeSetItem(KEY_ACTIVE_PLAN_ID, migrated.id)
+  safeRemoveItem(KEY_PLAN)
 }
 
 export function loadGoal(): RunningGoal | null {
-  return safeParseJson<RunningGoal>(localStorage.getItem(KEY_GOAL))
+  return safeParseJson<RunningGoal>(safeGetItem(KEY_GOAL))
 }
 
 export function saveGoal(goal: RunningGoal): void {
-  localStorage.setItem(KEY_GOAL, JSON.stringify(goal))
+  safeSetItem(KEY_GOAL, JSON.stringify(goal))
   scheduleCloudSync()
 }
 
 export function loadPlans(): TrainingPlan[] {
   migrateLegacyPlanIfNeeded()
-  const raw = localStorage.getItem(KEY_PLANS)
+  const raw = safeGetItem(KEY_PLANS)
   if (!raw) return []
   const arr = safeParseJson<TrainingPlan[]>(raw)
   return Array.isArray(arr) ? arr : []

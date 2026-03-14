@@ -28,9 +28,10 @@ export function showWorkoutReminder(workoutType: string): void {
   if (typeof window === 'undefined' || !('Notification' in window) || Notification.permission !== 'granted')
     return
   if (getReminderShownToday()) return
+  const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? ''
   new Notification('Running Plan', {
     body: `You have a ${workoutType} run scheduled for today. Tap to open.`,
-    icon: '/pwa-icon.svg',
+    icon: `${base}pwa-icon.svg`,
     tag: 'workout-reminder',
   })
   setReminderShownToday()

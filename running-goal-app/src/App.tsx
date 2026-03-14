@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, startTransition } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { BottomNav } from './components/BottomNav'
 import { Toast } from './components/Toast'
@@ -10,6 +10,7 @@ import { NutritionPage } from './pages/NutritionPage'
 import { PlanPage } from './pages/PlanPage'
 import { RacesPage } from './pages/RacesPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { AboutPage } from './pages/AboutPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { WorkoutPage } from './pages/WorkoutPage'
 import { AuthPage } from './pages/AuthPage'
@@ -40,6 +41,7 @@ function Shell() {
             <Route path="/nutrition" element={<NutritionPage />} />
             <Route path="/races" element={<RacesPage />} />
             <Route path="/history" element={<HistoryPage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route path="/workout/:id" element={<WorkoutPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
@@ -54,33 +56,44 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [checking, setChecking] = useState(true)
   const [onboardingDismissed, setOnboardingDismissed] = useState(false)
+  const handleOnboardingComplete = useCallback(() => setOnboardingDismissed(true), [])
 
   useEffect(() => {
     let mounted = true
     void (async () => {
-      const s = await getSession()
-      if (!mounted) return
-      if (s?.user.id) {
-        setCloudUserId(s.user.id)
-        await hydrateLocalFromCloud(s.user.id)
-      } else {
-        setCloudUserId(null)
+      try {
+        const s = await getSession()
+        if (!mounted) return
+        if (s?.user.id) {
+          setCloudUserId(s.user.id)
+          await hydrateLocalFromCloud(s.user.id)
+        } else {
+          setCloudUserId(null)
+        }
+        setSession(s)
+      } catch (e) {
+        console.error('Auth init error:', e)
+        if (mounted) setSession(null)
+      } finally {
+        if (mounted) setChecking(false)
       }
-      setSession(s)
-      setChecking(false)
     })()
 
     const unsub = onAuthChange((event, s) => {
-      setSession(s)
-      if (s?.user.id) {
-        setCloudUserId(s.user.id)
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          void hydrateLocalFromCloud(s.user.id)
+      // Use startTransition to avoid "Maximum update depth" when Supabase fires multiple events rapidly
+      startTransition(() => {
+        if (!mounted) return
+        setSession(s)
+        if (s?.user.id) {
+          setCloudUserId(s.user.id)
+          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+            void hydrateLocalFromCloud(s.user.id)
+          }
+        } else {
+          setCloudUserId(null)
+          clearAllData() // Clear so switching accounts doesn't show previous user's data
         }
-      } else {
-        setCloudUserId(null)
-        clearAllData() // Clear so switching accounts doesn't show previous user's data
-      }
+      })
     })
     return () => {
       mounted = false
@@ -102,7 +115,12 @@ export default function App() {
   }
 
   if (checking) {
-    return <div className="min-h-screen bg-[#070b14]" />
+    return (
+      <div className="min-h-screen bg-[#070b14] flex flex-col items-center justify-center gap-5 px-6">
+        <div className="h-12 w-12 border-2 border-white/20 border-t-emerald-400 rounded-full animate-spin" />
+        <span className="text-base font-medium text-white/80">Loading RunPace…</span>
+      </div>
+    )
   }
 
   if (!session) {
@@ -117,7 +135,7 @@ export default function App() {
     <HashRouter>
       {showOnboarding ? (
         <Routes>
-          <Route path="*" element={<OnboardingPage onComplete={() => setOnboardingDismissed(true)} />} />
+          <Route path="*" element={<OnboardingPage onComplete={handleOnboardingComplete} />} />
         </Routes>
       ) : (
         <>

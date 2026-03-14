@@ -6,10 +6,17 @@ type State = {
 }
 
 let state: State = { status: 'idle', lastError: null }
+let cachedSnapshot: [SyncStatus, string | null] = ['idle', null]
 const listeners: Array<() => void> = []
+let notifyScheduled = false
 
 function notify(): void {
-  listeners.forEach((l) => l())
+  if (notifyScheduled) return
+  notifyScheduled = true
+  setTimeout(() => {
+    notifyScheduled = false
+    listeners.forEach((l) => l())
+  }, 0)
 }
 
 export function getSyncStatus(): SyncStatus {
@@ -18,6 +25,11 @@ export function getSyncStatus(): SyncStatus {
 
 export function getSyncLastError(): string | null {
   return state.lastError
+}
+
+/** Single snapshot for useSyncExternalStore - stable reference until store changes */
+export function getSyncSnapshot(): [SyncStatus, string | null] {
+  return cachedSnapshot
 }
 
 export function subscribe(listener: () => void): () => void {
@@ -33,5 +45,6 @@ export function setSyncStatus(status: SyncStatus, error?: string): void {
     status,
     lastError: error ?? (status === 'failed' ? state.lastError : null),
   }
+  cachedSnapshot = [state.status, state.lastError]
   notify()
 }

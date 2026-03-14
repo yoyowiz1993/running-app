@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Bell, Link2, LogOut, RefreshCw, Shield, Trash2, User } from 'lucide-react'
+import { Bell, Info, Link2, LogOut, RefreshCw, Shield, Trash2, User } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSyncExternalStore } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -275,6 +275,22 @@ export function SettingsPage() {
             </Card>
           </motion.div>
         ) : null}
+
+        {/* ── About ── */}
+        <motion.div variants={fadeUp}>
+          <Card
+            className="p-4 cursor-pointer hover:bg-white/5 transition active:scale-[0.99]"
+            onClick={() => nav('/about')}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Info className="h-4 w-4 text-white/50" />
+                <span className="text-sm text-white/80">About</span>
+              </div>
+              <span className="text-white/40">→</span>
+            </div>
+          </Card>
+        </motion.div>
 
         {/* ── Sign out ── */}
         <motion.div variants={fadeUp}>

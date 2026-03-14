@@ -9,13 +9,24 @@ export type Toast = {
 
 const toasts: Toast[] = []
 const listeners: Array<() => void> = []
+let cachedSnapshot: Toast[] = []
+let notifyScheduled = false
 
 function notify(): void {
-  listeners.forEach((l) => l())
+  cachedSnapshot = [...toasts]
+  if (notifyScheduled) return
+  notifyScheduled = true
+  setTimeout(() => {
+    notifyScheduled = false
+    listeners.forEach((l) => l())
+  }, 0)
 }
 
 export function getToasts(): Toast[] {
-  return [...toasts]
+  // useSyncExternalStore requires a STABLE reference when data hasn't changed.
+  // Returning a new array every time causes "Maximum update depth exceeded".
+  // notify() updates cachedSnapshot when toasts actually change.
+  return cachedSnapshot
 }
 
 export function subscribe(listener: () => void): () => void {

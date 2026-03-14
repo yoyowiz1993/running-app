@@ -1,12 +1,11 @@
 import { useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { CloudOff, Cloud, Loader2, RefreshCw, WifiOff } from 'lucide-react'
-import { getSyncStatus, subscribe, getSyncLastError } from '../lib/syncStatus'
+import { subscribe, getSyncSnapshot } from '../lib/syncStatus'
 import { retryCloudSync } from '../lib/storage'
 
 function SyncIndicator() {
-  const status = useSyncExternalStore(subscribe, getSyncStatus, getSyncStatus)
-  const lastError = useSyncExternalStore(subscribe, getSyncLastError, getSyncLastError)
+  const [status, lastError] = useSyncExternalStore(subscribe, getSyncSnapshot, getSyncSnapshot)
   const showIndicator = status !== 'idle'
   if (!showIndicator) return null
 
@@ -52,12 +51,22 @@ function SyncIndicator() {
   return null
 }
 
-export function TopBar({ title, right }: { title: string; right?: ReactNode }) {
+export function TopBar({
+  title,
+  left,
+  right,
+}: {
+  title: string
+  left?: ReactNode
+  right?: ReactNode
+}) {
   return (
     <div className="safe-area-pt safe-area-px sticky top-0 z-20 bg-[#070b14]/75 backdrop-blur">
       <div className="mx-auto flex w-full max-w-md items-center justify-between px-4 py-3">
-        <div className="text-lg font-semibold text-white">{title}</div>
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          {left ?? <span className="text-lg font-semibold text-white">{title}</span>}
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
           <SyncIndicator />
           {right}
         </div>
