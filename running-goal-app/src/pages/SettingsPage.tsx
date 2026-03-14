@@ -13,7 +13,13 @@ import { getApiBase, getGarminAuthUrl } from '../lib/garmin'
 import { FEATURES } from '../lib/featureFlags'
 import { getSyncStatus, getSyncLastError, subscribe } from '../lib/syncStatus'
 import { getStravaAuthUrl, fetchStravaConnectionStatus, saveStravaTokens } from '../lib/strava'
-import { isNotificationSupported, requestNotificationPermission } from '../lib/notifications'
+import {
+  isNotificationSupported,
+  requestNotificationPermission,
+  getRemindersEnabled,
+  setRemindersEnabled,
+  sendTestNotification,
+} from '../lib/notifications'
 import { supabase } from '../lib/supabase'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
@@ -71,11 +77,13 @@ export function SettingsPage() {
   const [stravaAthleteName, setStravaAthleteName] = useState<string>('')
   const [backendUrl, setBackendUrl] = useState<string>('')
   const [signingOut, setSigningOut] = useState(false)
-  const [ notificationPermission, setNotificationPermission ] = useState<NotificationPermission | null>(null)
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(null)
+  const [remindersEnabled, setRemindersEnabledState] = useState(true)
 
   useEffect(() => {
     if (isNotificationSupported()) {
       setNotificationPermission(Notification.permission)
+      setRemindersEnabledState(getRemindersEnabled())
     }
   }, [])
 
@@ -246,30 +254,60 @@ export function SettingsPage() {
               <div className="text-xs font-semibold uppercase tracking-wider text-white/40 mb-3">
                 Workout Reminders
               </div>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Bell className="h-4 w-4 text-white/50" />
-                  <div>
-                    <span className="text-sm text-white/70">
-                      {notificationPermission === 'granted'
-                        ? 'Reminders enabled'
-                        : notificationPermission === 'denied'
-                          ? 'Reminders blocked'
-                          : 'Get notified about today\'s run'}
-                    </span>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Bell className="h-4 w-4 text-white/50" />
+                    <div>
+                      <span className="text-sm text-white/70">
+                        {notificationPermission === 'granted'
+                          ? remindersEnabled
+                            ? 'Reminders on'
+                            : 'Reminders off'
+                          : notificationPermission === 'denied'
+                            ? 'Reminders blocked (check browser settings)'
+                            : 'Get notified when you open the app and have a run today'}
+                      </span>
+                    </div>
                   </div>
+                  {notificationPermission === 'granted' ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        const next = !remindersEnabled
+                        setRemindersEnabled(next)
+                        setRemindersEnabledState(next)
+                      }}
+                    >
+                      {remindersEnabled ? 'Turn off' : 'Turn on'}
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={async () => {
+                        const p = await requestNotificationPermission()
+                        setNotificationPermission(p)
+                        if (p === 'granted') setRemindersEnabledState(getRemindersEnabled())
+                      }}
+                      disabled={notificationPermission === 'denied'}
+                    >
+                      {notificationPermission === 'denied' ? 'Blocked' : 'Enable'}
+                    </Button>
+                  )}
                 </div>
-                {notificationPermission !== 'granted' && (
-                  <Button
-                    variant="secondary"
-                    onClick={async () => {
-                      const p = await requestNotificationPermission()
-                      setNotificationPermission(p)
-                    }}
-                    disabled={notificationPermission === 'denied'}
-                  >
-                    {notificationPermission === 'denied' ? 'Blocked' : 'Enable'}
-                  </Button>
+                {notificationPermission === 'granted' && (
+                  <>
+                    <p className="text-xs text-white/40">
+                      Fires when you open Home and have a run scheduled for today.
+                    </p>
+                    <Button
+                      variant="ghost"
+                      className="w-full text-white/50 hover:text-white/70"
+                      onClick={() => sendTestNotification()}
+                    >
+                      Send test notification
+                    </Button>
+                  </>
                 )}
               </div>
             </Card>
